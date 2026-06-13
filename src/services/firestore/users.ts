@@ -16,7 +16,13 @@ import { AuthenticationError } from "@/utils/errors";
 export const userProfileConverter: FirestoreDataConverter<UserProfile> = {
   toFirestore(profile: UserProfile): DocumentData {
     const { id, ...data } = profile;
-    return data;
+    const cleanData = { ...data } as DocumentData;
+    Object.keys(cleanData).forEach((key) => {
+      if (cleanData[key] === undefined) {
+        delete cleanData[key];
+      }
+    });
+    return cleanData;
   },
   fromFirestore(snapshot: QueryDocumentSnapshot): UserProfile {
     const data = snapshot.data();
@@ -38,7 +44,13 @@ export const userProfileConverter: FirestoreDataConverter<UserProfile> = {
 // 2. UserPreferences Converter
 export const userPreferencesConverter: FirestoreDataConverter<UserPreferences> = {
   toFirestore(prefs: UserPreferences): DocumentData {
-    return prefs;
+    const data = { ...prefs } as DocumentData;
+    Object.keys(data).forEach((key) => {
+      if (data[key] === undefined) {
+        delete data[key];
+      }
+    });
+    return data;
   },
   fromFirestore(snapshot: QueryDocumentSnapshot): UserPreferences {
     const data = snapshot.data();

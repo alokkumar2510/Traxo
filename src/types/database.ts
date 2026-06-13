@@ -39,7 +39,7 @@ export interface UserPreferences {
   theme: "dark" | "light" | "system";
   emailNotifications: boolean;
   telegramNotifications: boolean;
-  telegramChatId?: string;
+  telegramChatId?: string | null;
   defaultFrequency: ScanFrequency;
   timezone: string;
   updatedAt: Timestamp;

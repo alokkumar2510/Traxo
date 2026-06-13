@@ -126,7 +126,7 @@ export default function SettingsPage() {
         theme,
         emailNotifications,
         telegramNotifications,
-        telegramChatId: telegramChatId.trim() || undefined,
+        telegramChatId: telegramChatId.trim() || null,
         defaultFrequency,
         timezone,
         updatedAt: Timestamp.now(),
