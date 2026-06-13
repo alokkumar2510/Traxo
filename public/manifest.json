@@ -1,0 +1,18 @@
+{
+  "name": "Traxo Watcher Platform",
+  "short_name": "Traxo",
+  "description": "Premium edge-first change detection and watcher platform.",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#050505",
+  "theme_color": "#050505",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

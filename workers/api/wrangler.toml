@@ -1,0 +1,30 @@
+name = "traxo-api"
+main = "src/index.ts"
+compatibility_date = "2024-11-12"
+compatibility_flags = [ "nodejs_compat" ]
+
+[vars]
+FIREBASE_PROJECT_ID = "traxo-prod-2025"
+NEXT_JS_API_URL = "https://traxo.alokkumarsahu.in"
+INTERNAL_API_SECRET = "traxo-internal-secret-2025"
+
+# Cloudflare Queue Producer Binding
+[[queues.producers]]
+queue = "traxo-scans"
+binding = "SCANS_QUEUE"
+
+# Cloudflare Queue Consumer Binding
+[[queues.consumers]]
+queue = "traxo-scans"
+max_batch_size = 10
+max_batch_timeout = 2
+
+# Cloudflare Cron Triggers (max 5 on free plan)
+[triggers]
+crons = [
+  "*/30 * * * *",     # Every 30 minutes
+  "0 * * * *",        # Hourly
+  "0 */3 * * *",      # Every 3 hours
+  "0 */6 * * *",      # Every 6 hours
+  "0 0 * * *"         # Daily
+]

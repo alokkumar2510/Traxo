@@ -1,0 +1,48 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper function to get tracker document from Firestore
+    function getTracker(trackerId) {
+      return firestore.get(/databases/(default)/documents/trackers/$(trackerId));
+    }
+
+    // Helper function to check if the authenticated user owns the parent tracker
+    function isTrackerOwner(trackerId) {
+      return isAuthenticated() && getTracker(trackerId).data.userId == request.auth.uid;
+    }
+
+    // Helper function to check if the parent tracker is public
+    function isTrackerPublic(trackerId) {
+      return getTracker(trackerId).data.isPublic == true;
+    }
+
+    // Rules for Screenshots subcollection resources
+    match /screenshots/{trackerId}/{allPaths=**} {
+      allow read: if isAuthenticated() && (isTrackerOwner(trackerId) || isTrackerPublic(trackerId));
+      allow write: if isTrackerOwner(trackerId);
+    }
+
+    // Rules for Snapshots subcollection resources
+    match /snapshots/{trackerId}/{allPaths=**} {
+      allow read: if isAuthenticated() && (isTrackerOwner(trackerId) || isTrackerPublic(trackerId));
+      allow write: if isTrackerOwner(trackerId);
+    }
+
+    // Rules for Visual Diffs subcollection resources
+    match /visual-diffs/{trackerId}/{allPaths=**} {
+      allow read: if isAuthenticated() && (isTrackerOwner(trackerId) || isTrackerPublic(trackerId));
+      allow write: if isTrackerOwner(trackerId);
+    }
+
+    // Rules for User CSV/JSON Exports
+    match /exports/{userId}/{allPaths=**} {
+      allow read, write: if isAuthenticated() && request.auth.uid == userId;
+    }
+  }
+}

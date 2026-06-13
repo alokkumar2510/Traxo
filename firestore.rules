@@ -1,0 +1,111 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper function to verify user ownership of a user-based document
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // User Profile Rules
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+
+      // Preferences subcollection
+      match /preferences/{preferenceId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // Collections subcollection
+      match /collections/{collectionId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // Notifications subcollection
+      match /notifications/{notificationId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // Tags subcollection
+      match /tags/{tagId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // Subscriptions subcollection
+      match /subscriptions/{subscriptionId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    // Tracker Rules (Root Collection)
+    match /trackers/{trackerId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || resource.data.isPublic == true);
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+
+      // Subcollections nested inside trackers (verify parent tracker owner or isPublic)
+      match /snapshots/{snapshotId} {
+        allow read: if isAuthenticated() && (
+          get(/databases/$(database)/documents/trackers/$(trackerId)).data.userId == request.auth.uid ||
+          get(/databases/$(database)/documents/trackers/$(trackerId)).data.isPublic == true
+        );
+        allow write: if isAuthenticated() && get(/databases/$(database)/documents/trackers/$(trackerId)).data.userId == request.auth.uid;
+      }
+
+      match /screenshots/{screenshotId} {
+        allow read: if isAuthenticated() && (
+          get(/databases/$(database)/documents/trackers/$(trackerId)).data.userId == request.auth.uid ||
+          get(/databases/$(database)/documents/trackers/$(trackerId)).data.isPublic == true
+        );
+        allow write: if isAuthenticated() && get(/databases/$(database)/documents/trackers/$(trackerId)).data.userId == request.auth.uid;
+      }
+
+      match /scans/{scanId} {
+        allow read: if isAuthenticated() && (
+          get(/databases/$(database)/documents/trackers/$(trackerId)).data.userId == request.auth.uid ||
+          get(/databases/$(database)/documents/trackers/$(trackerId)).data.isPublic == true
+        );
+        allow write: if isAuthenticated() && get(/databases/$(database)/documents/trackers/$(trackerId)).data.userId == request.auth.uid;
+      }
+
+      match /events/{eventId} {
+        allow read: if isAuthenticated() && (
+          get(/databases/$(database)/documents/trackers/$(trackerId)).data.userId == request.auth.uid ||
+          get(/databases/$(database)/documents/trackers/$(trackerId)).data.isPublic == true
+        );
+        allow write: if isAuthenticated() && get(/databases/$(database)/documents/trackers/$(trackerId)).data.userId == request.auth.uid;
+      }
+
+      match /metrics/{metricId} {
+        allow read: if isAuthenticated() && (
+          get(/databases/$(database)/documents/trackers/$(trackerId)).data.userId == request.auth.uid ||
+          get(/databases/$(database)/documents/trackers/$(trackerId)).data.isPublic == true
+        );
+        allow write: if isAuthenticated() && get(/databases/$(database)/documents/trackers/$(trackerId)).data.userId == request.auth.uid;
+      }
+    }
+
+    // Public Marketplace rules
+    match /marketplace/publicTrackers/{trackerId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && request.resource.data.creatorId == request.auth.uid;
+      allow update, delete: if isAuthenticated() && resource.data.creatorId == request.auth.uid;
+    }
+
+    // User Analytics rules
+    match /analytics/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // User Billing rules (Read-only for users, writes via Service Account)
+    match /billing/{userId} {
+      allow read: if isOwner(userId);
+      allow write: if false;
+    }
+  }
+}

@@ -1,0 +1,11 @@
+# Cloudflare Pages Redirects for Traxo
+# Dynamic tracker detail pages served as SPA shells
+/trackers /trackers/index.html 200
+/trackers/ /trackers/index.html 200
+/trackers/__next* /trackers/__next:splat 200
+/trackers/_next* /trackers/_next:splat 200
+/trackers/:id /trackers/view/ 200
+/trackers/:id/ /trackers/view/ 200
+
+# Catch-all for SPA routing (always redirect unknown paths to index)
+# (Add more specific rules above this)
