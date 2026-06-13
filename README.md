@@ -1,5 +1,19 @@
 # 🌌 TRAXO — Premium Website & Change Monitor
 
+<p align="center">
+  <img src="ui_images/traxo_banner.png" alt="TRAXO Banner" width="100%">
+</p>
+
+<p align="center">
+  <a href="https://traxo.alokkumarsahu.in" target="_blank">
+    <img src="https://img.shields.io/badge/Live_Site-Visit_Site-00E5FF?style=for-the-badge&logo=opsgenie&logoColor=black" alt="Live Site">
+  </a>
+  <img src="https://img.shields.io/badge/Next.js-000000?style=for-the-badge&logo=nextdotjs&logoColor=white" alt="Next.js">
+  <img src="https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript">
+  <img src="https://img.shields.io/badge/Cloudflare_Workers-F38020?style=for-the-badge&logo=cloudflare&logoColor=white" alt="Cloudflare Workers">
+  <img src="https://img.shields.io/badge/Firebase-FFCA28?style=for-the-badge&logo=firebase&logoColor=black" alt="Firebase">
+</p>
+
 **Traxo** is a premium, real-time website monitoring and change detection platform. It allows users to track visual, content, and price changes across any website, receive automated alerts via Email or Telegram (complete with screenshots of changes), and manage active trackers through a modern, glassmorphic analytics dashboard.
 
 🔗 **Live Site:** [https://traxo.alokkumarsahu.in](https://traxo.alokkumarsahu.in)  
