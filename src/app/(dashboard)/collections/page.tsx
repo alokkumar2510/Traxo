@@ -1,648 +1,541 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { collection, query, where, orderBy, onSnapshot, writeBatch, doc } from "firebase/firestore";
-import { db } from "@/services/firebase";
-import { useAuthStore } from "@/store/authStore";
-import { CollectionRepository, collectionConverter } from "@/services/firestore/collections";
-import { trackerConverter } from "@/services/firestore/trackers";
-import { Collection, Tracker } from "@/types/database";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import CreateCollectionModal from "@/components/collections/create-collection-modal";
-import EditCollectionModal from "@/components/collections/edit-collection-modal";
+import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Folder,
-  FolderPlus,
-  Plus,
-  Minus,
-  Edit2,
-  Trash2,
-  AlertCircle,
-  Briefcase,
-  ShoppingBag,
-  BookOpen,
-  FileText,
-  Globe,
-  Sparkles,
-  GraduationCap,
-  Heart,
-  ChevronRight,
   FolderOpen,
-  ArrowRight,
-  Activity,
+  Zap,
+  TrendingUp,
+  Bell,
+  Plus,
+  Grid3X3,
+  List,
+  MoreVertical,
+  Star,
   X,
-  Search,
+  ChevronLeft,
+  ChevronRight,
+  ArrowRight,
+  Trash2,
+  Share2,
+  Loader2,
+  Briefcase,
+  DollarSign,
+  Globe,
+  FileText,
 } from "lucide-react";
+import { db } from "@/services/firebase";
+import { useAuthStore } from "@/store/authStore";
+import { collection, query, where, orderBy, onSnapshot, doc, getDocs } from "firebase/firestore";
+import { Collection, Tracker } from "@/types/database";
+import { CollectionRepository } from "@/services/firestore/collections";
+import { Timestamp } from "firebase/firestore";
 
-// Helper to render icon by name
-const renderIcon = (iconName: string, className = "h-5 w-5") => {
-  switch (iconName) {
-    case "briefcase":
-      return <Briefcase className={className} />;
-    case "shopping-bag":
-      return <ShoppingBag className={className} />;
-    case "book-open":
-      return <BookOpen className={className} />;
-    case "file-text":
-      return <FileText className={className} />;
-    case "globe":
-      return <Globe className={className} />;
-    case "sparkles":
-      return <Sparkles className={className} />;
-    case "graduation-cap":
-      return <GraduationCap className={className} />;
-    case "heart":
-      return <Heart className={className} />;
-    default:
-      return <Folder className={className} />;
-  }
-};
+type TabFilter = "all" | "favorites";
+type ViewMode = "grid" | "list";
+
+const AVAILABLE_COLORS = ["#3B82F6", "#EF4444", "#22C55E", "#8B5CF6", "#F59E0B", "#06B6D4", "#EC4899"];
+const AVAILABLE_ICONS = ["folder", "briefcase", "dollar", "globe", "document"];
 
 export default function CollectionsPage() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const { profile } = useAuthStore();
+  const { user } = useAuthStore();
+  const userId = user?.uid;
 
+  const [tab, setTab] = useState<TabFilter>("all");
+  const [view, setView] = useState<ViewMode>("grid");
+  const [selectedId, setSelectedId] = useState<string>("");
   const [collections, setCollections] = useState<Collection[]>([]);
-  const [trackers, setTrackers] = useState<Tracker[]>([]); // User's total trackers list
+  const [trackers, setTrackers] = useState<Tracker[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  // Selection state
-  const [selectedCol, setSelectedCol] = useState<Collection | null>(null);
+  // New Collection Modal Form State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [color, setColor] = useState("#3B82F6");
+  const [icon, setIcon] = useState("folder");
+  const [starred, setStarred] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
-  // Modals States
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [isEditOpen, setIsEditOpen] = useState(false);
-  
-  // Delete Collection Confirm State
-  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-
-  // Add Trackers Dialog State
-  const [isAddTrackersOpen, setIsAddTrackersOpen] = useState(false);
-  const [selectedTrackerIds, setSelectedTrackerIds] = useState<string[]>([]);
-  const [trackerSearch, setTrackerSearch] = useState("");
-  const [savingTrackers, setSavingTrackers] = useState(false);
-
-  // Load selected ID from URL if present
+  // Fetch collections
   useEffect(() => {
-    const urlId = searchParams.get("id");
-    if (urlId && collections.length > 0) {
-      const match = collections.find((c) => c.id === urlId);
-      if (match) setSelectedCol(match);
+    if (!userId) return;
+    const collectionsRef = collection(db, "users", userId, "collections");
+    const q = query(collectionsRef, orderBy("createdAt", "desc"));
+    const unsub = onSnapshot(q, (snap) => {
+      setCollections(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Collection));
+      setLoading(false);
+    });
+    return () => unsub();
+  }, [userId]);
+
+  // Fetch user's trackers
+  useEffect(() => {
+    if (!userId) return;
+    const q = query(collection(db, "trackers"), where("userId", "==", userId));
+    const unsub = onSnapshot(q, (snap) => {
+      setTrackers(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Tracker));
+    });
+    return () => unsub();
+  }, [userId]);
+
+  // Auto-select first collection on load
+  useEffect(() => {
+    if (collections.length > 0 && !selectedId) {
+      setSelectedId(collections[0].id);
     }
-  }, [searchParams, collections]);
+  }, [collections, selectedId]);
 
-  // Set up real-time collections listener
-  useEffect(() => {
-    if (!profile?.id) return;
-
-    setLoading(true);
-    const q = query(
-      collection(db, "users", profile.id, "collections").withConverter(collectionConverter),
-      orderBy("createdAt", "desc")
-    );
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snap) => {
-        const list: Collection[] = [];
-        snap.forEach((docSnap) => {
-          list.push(docSnap.data());
-        });
-        setCollections(list);
-        setLoading(false);
-        setError(null);
-      },
-      (err) => {
-        console.error("Collections onSnapshot error", err);
-        setError("Failed to fetch collections.");
-        setLoading(false);
+  // Group trackers by collection ID
+  const trackersByCollection = useMemo(() => {
+    const map: Record<string, Tracker[]> = {};
+    trackers.forEach((t) => {
+      if (t.collectionId) {
+        if (!map[t.collectionId]) map[t.collectionId] = [];
+        map[t.collectionId].push(t);
       }
-    );
+    });
+    return map;
+  }, [trackers]);
 
-    return () => unsubscribe();
-  }, [profile]);
-
-  // Set up user trackers listener (needed for detail listing and add selectors)
-  useEffect(() => {
-    if (!profile?.id) return;
-
-    const q = query(
-      collection(db, "trackers").withConverter(trackerConverter),
-      where("userId", "==", profile.id)
-    );
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snap) => {
-        const list: Tracker[] = [];
-        snap.forEach((docSnap) => {
-          list.push(docSnap.data());
-        });
-        setTrackers(list);
-      },
-      (err) => {
-        console.error("Trackers listener error in collections", err);
+  // Filter collections
+  const filteredCollections = useMemo(() => {
+    return collections.filter((c) => {
+      if (tab === "favorites") {
+        // Here we assume star/favorite status can be mapped or is stored in the collection doc (starred: boolean)
+        return (c as any).starred === true;
       }
-    );
+      return true;
+    });
+  }, [collections, tab]);
 
-    return () => unsubscribe();
-  }, [profile]);
+  const selected = collections.find(c => c.id === selectedId);
+  const selectedTrackers = selected ? (trackersByCollection[selected.id] || []) : [];
 
-  // Dynamic filter for trackers that are in the selected collection
-  const selectedTrackers = trackers.filter(
-    (t) => selectedCol && t.collectionId === selectedCol.id
-  );
+  // Counts for Stats
+  const stats = useMemo(() => {
+    const activeCols = collections.filter(c => (trackersByCollection[c.id]?.length || 0) > 0).length;
+    const totalChanges = trackers.reduce((sum, t) => sum + (t.changeCount || 0), 0);
+    return [
+      { label: "Total Collections", value: String(collections.length), sub: "Grouped folders", iconBg: "linear-gradient(135deg,#7C3AED,#8B5CF6)" },
+      { label: "Total Trackers", value: String(trackers.length), sub: "Live scanners", iconBg: "linear-gradient(135deg,#2563EB,#3B82F6)" },
+      { label: "Active Collections", value: String(activeCols), sub: "With trackers running", iconBg: "linear-gradient(135deg,#16A34A,#22C55E)" },
+      { label: "Alerts / Changes", value: String(totalChanges), sub: "Total detected updates", iconBg: "linear-gradient(135deg,#D97706,#F59E0B)" },
+    ];
+  }, [collections, trackers, trackersByCollection]);
 
-  // Filter for trackers that are NOT in the selected collection (available to add)
-  const availableTrackers = trackers.filter((t) => {
-    if (!selectedCol) return false;
-    // Don't show trackers already in the collection
-    if (t.collectionId === selectedCol.id) return false;
-    
-    // Search query filter
-    const matchesSearch =
-      t.name.toLowerCase().includes(trackerSearch.toLowerCase()) ||
-      t.url.toLowerCase().includes(trackerSearch.toLowerCase());
-    return matchesSearch;
-  });
-
-  // Handle deleting a collection (and unassigning all trackers inside it)
-  const confirmDeleteCollection = async () => {
-    if (!profile?.id || !selectedCol) return;
-    setDeleting(true);
+  // Toggle Starred Collection status
+  const handleToggleStar = async (col: Collection) => {
+    if (!userId) return;
     try {
-      const batch = writeBatch(db);
+      const nextStarred = !(col as any).starred;
+      await CollectionRepository.updateCollection(userId, col.id, { starred: nextStarred } as any);
+    } catch (err) {
+      console.error("Failed to star collection:", err);
+    }
+  };
+
+  // Delete Collection
+  const handleDeleteCollection = async (collectionId: string) => {
+    if (!userId) return;
+    if (window.confirm("Are you sure you want to delete this collection? Trackers inside will be unassigned but not deleted.")) {
+      try {
+        await CollectionRepository.deleteCollection(userId, collectionId);
+        setSelectedId("");
+      } catch (err) {
+        console.error("Failed to delete collection:", err);
+      }
+    }
+  };
+
+  // Submit New Collection form
+  const handleCreateCollection = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userId) return;
+    if (!name.trim()) {
+      setFormError("Collection name is required.");
+      return;
+    }
+
+    setSubmitting(true);
+    setFormError(null);
+
+    try {
+      const collectionId = crypto.randomUUID();
+      const newCol: Collection = {
+        id: collectionId,
+        name: name.trim(),
+        description: description.trim() || undefined,
+        color,
+        icon,
+        trackerCount: 0,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+      };
       
-      // 1. Unassociate trackers in this collection
-      const associated = trackers.filter((t) => t.collectionId === selectedCol.id);
-      associated.forEach((t) => {
-        const trackerRef = doc(db, "trackers", t.id);
-        batch.update(trackerRef, { collectionId: "" });
-      });
+      // If starred is selected, add to schema
+      if (starred) {
+        (newCol as any).starred = true;
+      }
 
-      // 2. Delete the collection document
-      const colDocRef = doc(db, "users", profile.id, "collections", selectedCol.id);
-      batch.delete(colDocRef);
-
-      await batch.commit();
+      await CollectionRepository.createCollection(userId, newCol);
       
-      setSelectedCol(null);
-      setIsDeleteOpen(false);
-    } catch (err) {
-      console.error("Failed to delete collection", err);
+      setName("");
+      setDescription("");
+      setColor("#3B82F6");
+      setIcon("folder");
+      setStarred(false);
+      setIsModalOpen(false);
+      setSelectedId(collectionId);
+    } catch (err: any) {
+      setFormError(err.message || "Failed to create collection.");
     } finally {
-      setDeleting(false);
+      setSubmitting(false);
     }
   };
 
-  // Handle removing a single tracker from the selected collection
-  const handleRemoveTracker = async (trackerId: string) => {
-    if (!profile?.id || !selectedCol) return;
-    try {
-      const batch = writeBatch(db);
-
-      // 1. Reset tracker collectionId
-      const trackerRef = doc(db, "trackers", trackerId);
-      batch.update(trackerRef, { collectionId: "" });
-
-      // 2. Decrement collection count
-      const colRef = doc(db, "users", profile.id, "collections", selectedCol.id);
-      batch.update(colRef, { trackerCount: Math.max(0, (selectedCol.trackerCount || 0) - 1) });
-
-      await batch.commit();
-
-      // Update local state if needed (onSnapshot will handle, but helps instant rendering)
-      setSelectedCol((prev) =>
-        prev ? { ...prev, trackerCount: Math.max(0, (prev.trackerCount || 0) - 1) } : null
-      );
-    } catch (err) {
-      console.error("Failed to remove tracker", err);
+  const getIconComponent = (iconName: string, className = "h-5 w-5 text-white") => {
+    switch (iconName) {
+      case "briefcase": return <Briefcase className={className} />;
+      case "dollar": return <DollarSign className={className} />;
+      case "globe": return <Globe className={className} />;
+      case "document": return <FileText className={className} />;
+      default: return <FolderOpen className={className} />;
     }
   };
 
-  // Open Add Trackers modal
-  const handleOpenAddTrackers = () => {
-    setSelectedTrackerIds([]);
-    setTrackerSearch("");
-    setIsAddTrackersOpen(true);
-  };
-
-  // Toggle tracker checkbox selection
-  const handleToggleSelectTracker = (id: string) => {
-    setSelectedTrackerIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+  if (loading) {
+    return (
+      <div className="flex h-[60vh] flex-col items-center justify-center gap-4">
+        <Loader2 className="h-8 w-8 text-accent-primary animate-spin" />
+        <p className="text-sm font-mono text-foreground-secondary">Loading collections...</p>
+      </div>
     );
-  };
-
-  // Confirm adding selected trackers to the collection
-  const confirmAddTrackers = async () => {
-    if (!profile?.id || !selectedCol || selectedTrackerIds.length === 0) return;
-    setSavingTrackers(true);
-    try {
-      const batch = writeBatch(db);
-
-      // 1. Associate each selected tracker
-      selectedTrackerIds.forEach((trackerId) => {
-        const trackerRef = doc(db, "trackers", trackerId);
-        batch.update(trackerRef, { collectionId: selectedCol.id });
-      });
-
-      // 2. Increment collection trackerCount
-      const colRef = doc(db, "users", profile.id, "collections", selectedCol.id);
-      const newCount = (selectedCol.trackerCount || 0) + selectedTrackerIds.length;
-      batch.update(colRef, { trackerCount: newCount });
-
-      await batch.commit();
-
-      setSelectedCol((prev) => (prev ? { ...prev, trackerCount: newCount } : null));
-      setIsAddTrackersOpen(false);
-    } catch (err) {
-      console.error("Failed to add trackers", err);
-    } finally {
-      setSavingTrackers(false);
-    }
-  };
+  }
 
   return (
-    <div className="flex flex-col gap-6 h-full min-h-[calc(100vh-180px)]">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-foreground">
-            Collections
-          </h1>
-          <p className="mt-1 text-sm text-foreground-secondary">
-            Group trackers into folders to monitor them as unified modules.
-          </p>
-        </div>
-        <Button
-          onClick={() => setIsCreateOpen(true)}
-          className="flex items-center gap-2 self-start sm:self-auto"
-        >
-          <FolderPlus className="h-5 w-5" />
-          <span>New Collection</span>
-        </Button>
-      </div>
-
-      {/* Main Split Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-        {/* Left Side: Collections List (1/3 Width) */}
-        <div className="flex flex-col gap-4">
-          <h3 className="text-sm font-bold font-mono uppercase tracking-wider text-foreground-secondary px-1">
-            All Folders ({collections.length})
-          </h3>
-
-          {loading ? (
-            <div className="space-y-4">
-              {[1, 2, 3].map((i) => (
-                <div
-                  key={i}
-                  className="h-24 rounded-2xl border border-border-glass bg-bg-glass backdrop-blur-md p-4 animate-pulse"
-                />
-              ))}
-            </div>
-          ) : collections.length === 0 ? (
-            <div className="rounded-2xl border border-border-glass bg-bg-glass p-8 text-center">
-              <FolderOpen className="h-10 w-10 text-foreground-muted mx-auto mb-3" />
-              <p className="text-xs font-semibold text-foreground-secondary">
-                No collections created. Create a collection to organize your site monitors.
-              </p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {collections.map((col) => {
-                const isSelected = selectedCol?.id === col.id;
-                return (
-                  <div
-                    key={col.id}
-                    onClick={() => setSelectedCol(col)}
-                    className={`group cursor-pointer rounded-2xl border p-4 transition-all duration-300 ${
-                      isSelected
-                        ? "bg-surface-elevated/40 border-accent-primary shadow-[0_0_20px_rgba(59,130,246,0.08)] scale-[1.01]"
-                        : "border-border-glass bg-bg-glass hover:border-white/12 hover:bg-surface-elevated/15"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        {/* Custom visual color indicator */}
-                        <div className={`flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr ${col.color || "from-accent-primary to-accent-cyan"} p-[1px] shrink-0`}>
-                          <div className="flex h-full w-full items-center justify-center rounded-[10px] bg-surface">
-                            {renderIcon(col.icon, `h-5 w-5 ${isSelected ? "text-accent-primary" : "text-foreground-secondary group-hover:text-foreground"}`)}
-                          </div>
-                        </div>
-
-                        <div>
-                          <h4 className="text-sm font-bold text-foreground transition-colors group-hover:text-accent-primary line-clamp-1">
-                            {col.name}
-                          </h4>
-                          <p className="text-[10px] text-foreground-secondary font-mono mt-0.5">
-                            {col.trackerCount || 0} monitors
-                          </p>
-                        </div>
-                      </div>
-
-                      <ChevronRight className={`h-4 w-4 text-foreground-muted group-hover:translate-x-0.5 transition-transform ${isSelected ? "translate-x-0.5 text-accent-primary" : ""}`} />
-                    </div>
-
-                    {col.description && (
-                      <p className="mt-3 text-xs text-foreground-muted line-clamp-1 leading-relaxed">
-                        {col.description}
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+    <div className="flex h-full gap-0">
+      {/* ── Main Panel ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className={`flex flex-1 min-w-0 flex-col gap-5 ${selected ? "pr-4" : ""}`}
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Collections</h1>
+            <p className="mt-1 text-sm text-foreground-secondary">
+              Organize your trackers with collections. Group related trackers and monitor them together.
+            </p>
+          </div>
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="flex h-9 shrink-0 items-center gap-2 rounded-xl bg-accent-purple px-4 text-sm font-semibold text-white hover:bg-accent-purple/90 transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            New Collection
+          </button>
         </div>
 
-        {/* Right Side: Selected Collection Details (2/3 Width) */}
-        <div className="lg:col-span-2">
-          <AnimatePresence mode="wait">
-            {selectedCol ? (
-              <motion.div
-                key={selectedCol.id}
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 15 }}
-                transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-                className="space-y-6"
-              >
-                {/* Selected Collection Header Card */}
-                <div className="bg-bg-glass border border-border-glass rounded-3xl p-6 relative overflow-hidden">
-                  {/* Subtle color highlight orb behind the header */}
-                  <div className={`absolute -right-20 -top-20 h-40 w-40 rounded-full bg-gradient-to-tr ${selectedCol.color} opacity-10 blur-2xl pointer-events-none`} />
-
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div className="flex items-center gap-4">
-                      {/* Gradient icon box */}
-                      <div className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-tr ${selectedCol.color} p-[1px] shrink-0`}>
-                        <div className="flex h-full w-full items-center justify-center rounded-[15px] bg-surface">
-                          {renderIcon(selectedCol.icon, "h-6 w-6 text-foreground")}
-                        </div>
-                      </div>
-
-                      <div>
-                        <h2 className="text-xl font-extrabold text-foreground leading-snug">
-                          {selectedCol.name}
-                        </h2>
-                        <p className="text-xs text-foreground-secondary mt-0.5 font-mono">
-                          {selectedCol.trackerCount || 0} monitors associated
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 self-start sm:self-auto border-t sm:border-t-0 border-border-glass/40 pt-3 sm:pt-0 w-full sm:w-auto">
-                      <Button
-                        variant="secondary"
-                        onClick={() => setIsEditOpen(true)}
-                        className="flex-1 sm:flex-initial flex items-center gap-1.5 h-10 text-xs px-3"
-                      >
-                        <Edit2 className="h-4 w-4" />
-                        <span>Edit</span>
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        onClick={() => setIsDeleteOpen(true)}
-                        className="flex-1 sm:flex-initial flex items-center gap-1.5 h-10 text-xs px-3 border-error/20 bg-error/5 text-error hover:bg-error/10 hover:border-error/35"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        <span>Delete</span>
-                      </Button>
-                    </div>
-                  </div>
-
-                  {selectedCol.description && (
-                    <p className="text-xs text-foreground-secondary leading-relaxed mt-4 border-t border-border-glass/40 pt-3">
-                      {selectedCol.description}
-                    </p>
-                  )}
-                </div>
-
-                {/* Trackers inside Collection list */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-bold font-mono uppercase tracking-wider text-foreground-secondary">
-                      Monitored Websites ({selectedTrackers.length})
-                    </h3>
-                    <Button
-                      variant="secondary"
-                      onClick={handleOpenAddTrackers}
-                      className="flex items-center gap-1.5 h-9 rounded-lg text-xs font-semibold px-3 text-accent-primary border-accent-primary/20 bg-accent-primary/5 hover:border-accent-primary/45 hover:bg-accent-primary/10"
-                    >
-                      <Plus className="h-4 w-4" />
-                      <span>Add Tracker</span>
-                    </Button>
-                  </div>
-
-                  {selectedTrackers.length === 0 ? (
-                    // Empty Collection monitors list state
-                    <div className="rounded-2xl border border-border-glass bg-bg-glass p-12 text-center relative overflow-hidden">
-                      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-bg-glass border border-border-glass text-foreground-muted mb-4">
-                        <Activity className="h-6 w-6" />
-                      </div>
-                      <h4 className="text-sm font-bold text-foreground">No monitors in this collection</h4>
-                      <p className="text-xs text-foreground-secondary mt-1.5 max-w-xs mx-auto leading-normal">
-                        Select monitors from your repository pool to monitor them as a unified list.
-                      </p>
-                      <Button
-                        variant="secondary"
-                        onClick={handleOpenAddTrackers}
-                        className="mt-4"
-                      >
-                        Add website monitors
-                      </Button>
-                    </div>
-                  ) : (
-                    // Monitors list
-                    <div className="flex flex-col gap-3">
-                      {selectedTrackers.map((t) => (
-                        <div
-                          key={t.id}
-                          onClick={() => router.push(`/trackers/${t.id}`)}
-                          className="group cursor-pointer rounded-xl border border-border-glass bg-bg-glass p-4 transition-all duration-300 hover:border-white/12 hover:bg-surface-elevated/15 flex items-center justify-between gap-4"
-                        >
-                          <div className="flex-1 truncate space-y-1">
-                            <h4 className="text-sm font-bold text-foreground group-hover:text-accent-primary transition-colors leading-tight truncate">
-                              {t.name}
-                            </h4>
-                            <div className="flex items-center gap-1.5 text-xs text-foreground-secondary truncate">
-                              <Globe className="h-3.5 w-3.5 shrink-0" />
-                              <span className="underline truncate select-none">{t.url}</span>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-3 shrink-0">
-                            {/* Status badge indicator */}
-                            {t.status === "active" ? (
-                              <span className="h-2 w-2 rounded-full bg-success pulse-success" title="Active" />
-                            ) : (
-                              <span className="h-2 w-2 rounded-full bg-[#F59E0B]" title="Paused" />
-                            )}
-
-                            {/* Remove button */}
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRemoveTracker(t.id);
-                              }}
-                              className="h-8 w-8 rounded-lg border border-border-glass bg-bg-glass text-foreground-secondary flex items-center justify-center hover:text-error hover:border-error/25 hover:bg-error/5 transition-all"
-                              title="Remove from Collection"
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </motion.div>
-            ) : (
-              // Empty selection dashboard center
-              <div className="rounded-3xl border border-border-glass bg-bg-glass p-12 text-center max-w-md mx-auto mt-12 relative overflow-hidden">
-                <div className="absolute -top-[100px] left-1/2 -translate-x-1/2 w-[240px] h-[120px] bg-accent-primary/5 rounded-full blur-[40px]" />
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-primary/5 border border-accent-primary/15 text-foreground-secondary mb-5">
-                  <FolderOpen className="h-7 w-7" />
-                </div>
-                <h3 className="text-base font-bold text-foreground">Select a collection</h3>
-                <p className="mt-2 text-xs text-foreground-secondary max-w-xs mx-auto leading-relaxed">
-                  Choose a folder from the left menu to view, modify, and monitor associated website tracks, or create a new collection to get started.
-                </p>
+        {/* Stat Cards */}
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {stats.map((c) => (
+            <div key={c.label} className="glass-card flex items-center gap-3 rounded-2xl p-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: c.iconBg }}>
+                <FolderOpen className="h-5 w-5 text-white" />
               </div>
-            )}
-          </AnimatePresence>
+              <div>
+                <p className="text-[11px] text-foreground-secondary">{c.label}</p>
+                <p className="text-xl font-bold text-foreground">{c.value}</p>
+                <p className="text-[10px] text-foreground-muted">{c.sub}</p>
+              </div>
+            </div>
+          ))}
         </div>
-      </div>
 
-      {/* 1. Create Collection Modal */}
-      <CreateCollectionModal
-        isOpen={isCreateOpen}
-        onClose={() => setIsCreateOpen(false)}
-        onSuccess={() => setIsCreateOpen(false)}
-      />
+        {/* Tab Bar + View Toggle */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1">
+            {(["all", "favorites"] as TabFilter[]).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`relative px-3 py-1.5 text-[13px] font-medium transition-colors ${
+                  tab === t
+                    ? "text-foreground border-b-2 border-accent-purple"
+                    : "text-foreground-secondary hover:text-foreground"
+                }`}
+              >
+                {t === "all" ? "All Collections" : "Favorites"}
+              </button>
+            ))}
+          </div>
+        </div>
 
-      {/* 2. Edit Collection Modal */}
-      <EditCollectionModal
-        isOpen={isEditOpen}
-        onClose={() => setIsEditOpen(false)}
-        collectionItem={selectedCol}
-        onSuccess={() => setIsEditOpen(false)}
-      />
+        {/* Collection Grid */}
+        {filteredCollections.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center glass-card rounded-2xl p-8">
+            <FolderOpen className="h-10 w-10 text-foreground-muted mb-3" />
+            <p className="text-sm font-semibold text-foreground">No collections found</p>
+            <p className="text-xs text-foreground-secondary mt-1 max-w-xs">
+              {tab === "all" ? "Create a folder collection to organize your different tracking metrics." : "Mark collections as favorite to see them here."}
+            </p>
+            {tab === "all" && (
+              <button
+                onClick={() => setIsModalOpen(true)}
+                className="mt-4 flex h-8 items-center gap-1.5 rounded-lg bg-accent-purple px-3 text-xs font-semibold text-white hover:bg-accent-purple/90"
+              >
+                <Plus className="h-3.5 w-3.5" /> New Collection
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {filteredCollections.map((col) => {
+              const isSelected = col.id === selectedId;
+              const count = trackersByCollection[col.id]?.length || 0;
+              return (
+                <motion.div
+                  key={col.id}
+                  whileHover={{ y: -4 }}
+                  transition={{ duration: 0.2 }}
+                  onClick={() => setSelectedId(col.id)}
+                  className={`glass-card relative cursor-pointer rounded-2xl p-5 transition-all ${
+                    isSelected ? "border-accent-purple/40 bg-accent-purple/5" : ""
+                  }`}
+                >
+                  {/* Star */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleToggleStar(col);
+                    }}
+                    className={`absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-lg hover:bg-surface transition-colors ${(col as any).starred ? "text-yellow-500" : "text-foreground-muted"}`}
+                  >
+                    <Star className={`h-4 w-4 ${(col as any).starred ? "fill-yellow-500 text-yellow-500" : ""}`} />
+                  </button>
 
-      {/* 3. Delete Collection Dialog */}
-      <Dialog isOpen={isDeleteOpen} onClose={() => setIsDeleteOpen(false)}>
-        <DialogContent className="max-w-[400px]" onClose={() => setIsDeleteOpen(false)}>
-          <DialogHeader>
-            <DialogTitle className="text-error flex items-center gap-2 text-lg font-bold">
-              <AlertCircle className="h-5 w-5 text-error" /> Delete Collection?
-            </DialogTitle>
-            <DialogDescription className="mt-2 text-sm text-foreground-secondary">
-              Are you sure you want to delete <strong>{selectedCol?.name}</strong>? Monitors inside this folder will remain active but will be unassigned to the general pool.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="mt-6 flex flex-row justify-end gap-2">
-            <Button
-              variant="secondary"
-              onClick={() => setIsDeleteOpen(false)}
-              disabled={deleting}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={confirmDeleteCollection}
-              disabled={deleting}
-            >
-              {deleting ? "Deleting..." : "Confirm Delete"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+                  {/* Icon */}
+                  <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl" style={{ background: col.color || "#3B82F6" }}>
+                    {getIconComponent(col.icon)}
+                  </div>
 
-      {/* 4. Add Trackers to Collection Selection Dialog */}
-      <Dialog isOpen={isAddTrackersOpen} onClose={() => setIsAddTrackersOpen(false)}>
-        <DialogContent className="max-w-[480px] max-h-[85vh] overflow-y-auto" onClose={() => setIsAddTrackersOpen(false)}>
-          <DialogHeader>
-            <DialogTitle className="text-lg font-bold flex items-center gap-2">
-              <FolderPlus className="h-5 w-5 text-accent-primary" /> Add monitors
-            </DialogTitle>
-            <DialogDescription>
-              Select monitors from your pool to associate with <strong>{selectedCol?.name}</strong>.
-            </DialogDescription>
-          </DialogHeader>
+                  <h3 className="mb-0.5 text-[14px] font-semibold text-foreground">{col.name}</h3>
+                  <p className="mb-2 text-[12px] text-foreground-secondary">{count} trackers</p>
+                  <p className="mb-3 text-[12px] text-foreground-muted leading-relaxed line-clamp-2">{col.description || "No description provided."}</p>
 
-          <div className="space-y-4 mt-2">
-            {/* Tracker search */}
-            <div className="relative">
-              <Input
-                placeholder="Search available monitors..."
-                value={trackerSearch}
-                onChange={(e) => setTrackerSearch(e.target.value)}
-                className="pl-10 h-10 text-xs rounded-xl"
-              />
-              <Search className="absolute left-3.5 top-[13px] h-3.5 w-3.5 text-foreground-muted" />
+                  {/* Footer */}
+                  <div className="flex items-center justify-between mt-4 pt-3 border-t border-border-glass/30">
+                    <span className="text-[10px] text-foreground-muted">
+                      Created {col.createdAt ? new Date(col.createdAt.seconds * 1000).toLocaleDateString() : ""}
+                    </span>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+        )}
+      </motion.div>
+
+      {/* ── Right Detail Panel ── */}
+      <AnimatePresence>
+        {selected && (
+          <motion.div
+            initial={{ opacity: 0, x: 24 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 24 }}
+            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+            className="w-[290px] shrink-0 glass-card rounded-2xl overflow-hidden flex flex-col"
+          >
+            {/* Header */}
+            <div className="border-b border-border-glass p-4">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-accent-purple uppercase tracking-wider">Collection Details</span>
+                <button onClick={() => setSelectedId("")} className="flex h-6 w-6 items-center justify-center rounded text-foreground-muted hover:text-foreground">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl" style={{ background: selected.color || "#3B82F6" }}>
+                  {getIconComponent(selected.icon)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-[14px] font-semibold text-foreground truncate">{selected.name}</h3>
+                  </div>
+                  <p className="text-[12px] text-foreground-secondary">{selectedTrackers.length} trackers</p>
+                </div>
+              </div>
+              <p className="mt-2 text-[12px] text-foreground-secondary leading-relaxed">{selected.description || "No description."}</p>
             </div>
 
-            {/* List container */}
-            <div className="max-h-[260px] overflow-y-auto border border-border-glass rounded-xl bg-white/[0.01] divide-y divide-border-glass/40">
-              {availableTrackers.length === 0 ? (
-                <div className="p-8 text-center text-xs text-foreground-muted">
-                  No monitors available to add.
-                </div>
+            {/* Trackers in Collection */}
+            <div className="flex-1 overflow-y-auto p-4">
+              <h4 className="mb-3 text-[13px] font-semibold text-foreground">Trackers in this collection</h4>
+              {selectedTrackers.length === 0 ? (
+                <p className="text-[11px] text-foreground-muted">No trackers assigned to this collection folder.</p>
               ) : (
-                availableTrackers.map((t) => {
-                  const isChecked = selectedTrackerIds.includes(t.id);
-                  return (
-                    <div
-                      key={t.id}
-                      onClick={() => handleToggleSelectTracker(t.id)}
-                      className="p-3 flex items-center justify-between gap-3 hover:bg-surface-elevated/20 cursor-pointer transition-colors"
-                    >
-                      <div className="flex-1 truncate">
-                        <p className="text-xs font-semibold text-foreground truncate">{t.name}</p>
-                        <p className="text-[10px] text-foreground-secondary truncate">{t.url}</p>
+                <div className="space-y-2.5">
+                  {selectedTrackers.map((t) => (
+                    <div key={t.id} className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-surface-elevated text-[10px] font-bold text-foreground">
+                          {t.name[0]?.toUpperCase() || "T"}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-[12px] font-medium text-foreground">{t.name}</p>
+                          <p className="truncate text-[10px] text-foreground-muted">{t.url}</p>
+                        </div>
                       </div>
-                      
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={() => {}} // Controlled by click on parent div
-                        className="h-4.5 w-4.5 rounded border border-border-glass bg-bg-glass text-accent-primary focus:ring-accent-primary shrink-0 pointer-events-none"
-                      />
+                      <div className="flex items-center gap-1 shrink-0">
+                        <span className={`h-1.5 w-1.5 rounded-full ${t.status === "active" ? "bg-success" : t.status === "paused" ? "bg-warning" : "bg-error"}`} />
+                        <span className="text-[11px] capitalize text-foreground-secondary">{t.status}</span>
+                      </div>
                     </div>
-                  );
-                })
+                  ))}
+                </div>
               )}
             </div>
-          </div>
 
-          <DialogFooter className="mt-6">
-            <Button
-              variant="secondary"
-              onClick={() => setIsAddTrackersOpen(false)}
-              disabled={savingTrackers}
+            {/* Footer Actions */}
+            <div className="border-t border-border-glass p-3 flex gap-2">
+              <button
+                onClick={() => handleDeleteCollection(selected.id)}
+                className="w-full flex items-center justify-center gap-1.5 rounded-xl border border-error/30 bg-error/10 py-2 text-error hover:bg-error/20 transition-colors text-xs font-semibold"
+              >
+                <Trash2 className="h-4 w-4" /> Delete Collection
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Framer Motion Custom Modal for Creation ── */}
+      <AnimatePresence>
+        {isModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsModalOpen(false)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            {/* Dialog Content */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              className="relative w-full max-w-md overflow-hidden rounded-2xl border border-border-glass bg-background p-6 shadow-2xl z-10"
             >
-              Cancel
-            </Button>
-            <Button
-              onClick={confirmAddTrackers}
-              disabled={savingTrackers || selectedTrackerIds.length === 0}
-            >
-              {savingTrackers ? "Saving..." : `Add ${selectedTrackerIds.length} monitors`}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              <button onClick={() => setIsModalOpen(false)} className="absolute right-4 top-4 text-foreground-muted hover:text-foreground">
+                <X className="h-4 w-4" />
+              </button>
+              <h3 className="text-lg font-bold text-foreground mb-1">Create Collection</h3>
+              <p className="text-xs text-foreground-secondary mb-4">Create a folder folder to organize your trackers.</p>
+              
+              <form onSubmit={handleCreateCollection} className="space-y-4">
+                {formError && (
+                  <div className="rounded-lg border border-error/25 bg-error/10 p-2 text-xs font-semibold text-error">
+                    {formError}
+                  </div>
+                )}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-foreground-secondary">Collection Name *</label>
+                  <input
+                    type="text"
+                    placeholder="Gadgets pricing, Career goals..."
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                    className="w-full rounded-xl border border-border-glass bg-bg-glass px-3 py-2.5 text-sm text-foreground placeholder:text-foreground-muted outline-none focus:border-accent-purple"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-foreground-secondary">Description</label>
+                  <textarea
+                    placeholder="Brief description of this folder group..."
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    rows={2}
+                    className="w-full rounded-xl border border-border-glass bg-bg-glass px-3 py-2 text-sm text-foreground placeholder:text-foreground-muted outline-none focus:border-accent-purple resize-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Icon */}
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-foreground-secondary">Icon</label>
+                    <select
+                      value={icon}
+                      onChange={(e) => setIcon(e.target.value)}
+                      className="w-full h-10 rounded-xl border border-border-glass bg-[#18181b] px-3 text-sm text-foreground outline-none focus:border-accent-purple"
+                    >
+                      <option value="folder">📁 Folder</option>
+                      <option value="briefcase">💼 Business</option>
+                      <option value="dollar">💵 Financial</option>
+                      <option value="globe">🌐 Web</option>
+                      <option value="document">📄 Document</option>
+                    </select>
+                  </div>
+
+                  {/* Colors */}
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-foreground-secondary">Theme Color</label>
+                    <div className="flex flex-wrap gap-1.5 items-center h-10">
+                      {AVAILABLE_COLORS.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => setColor(c)}
+                          className={`h-5 w-5 rounded-full border transition-all ${color === c ? "border-white scale-110" : "border-transparent"}`}
+                          style={{ backgroundColor: c }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Star toggle */}
+                <div className="flex items-center gap-2 py-1 select-none">
+                  <input
+                    type="checkbox"
+                    id="modalStarred"
+                    checked={starred}
+                    onChange={(e) => setStarred(e.target.checked)}
+                    className="h-4.5 w-4.5 rounded border border-border-glass bg-bg-glass text-accent-primary"
+                  />
+                  <label htmlFor="modalStarred" className="text-sm text-foreground-secondary cursor-pointer">
+                    Add to favorites list
+                  </label>
+                </div>
+
+                <div className="mt-6 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsModalOpen(false)}
+                    className="rounded-xl border border-border-glass bg-bg-glass px-4 py-2 text-xs font-semibold text-foreground hover:bg-surface"
+                    disabled={submitting}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="rounded-xl bg-accent-purple px-4 py-2 text-xs font-semibold text-white hover:bg-accent-purple/90"
+                    disabled={submitting}
+                  >
+                    {submitting ? "Creating..." : "Create Folder"}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

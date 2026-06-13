@@ -12,81 +12,86 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    // Helper function to verify if the request is from the system backend scanner
+    function isSystemScanner() {
+      return isAuthenticated() && request.auth.token.email == 'system-scanner@traxo.com';
+    }
+
     // User Profile Rules
     match /users/{userId} {
-      allow read, write: if isOwner(userId);
+      allow read, write: if isOwner(userId) || isSystemScanner();
 
       // Preferences subcollection
       match /preferences/{preferenceId} {
-        allow read, write: if isOwner(userId);
+        allow read, write: if isOwner(userId) || isSystemScanner();
       }
 
       // Collections subcollection
       match /collections/{collectionId} {
-        allow read, write: if isOwner(userId);
+        allow read, write: if isOwner(userId) || isSystemScanner();
       }
 
       // Notifications subcollection
       match /notifications/{notificationId} {
-        allow read, write: if isOwner(userId);
+        allow read, write: if isOwner(userId) || isSystemScanner();
       }
 
       // Tags subcollection
       match /tags/{tagId} {
-        allow read, write: if isOwner(userId);
+        allow read, write: if isOwner(userId) || isSystemScanner();
       }
 
       // Subscriptions subcollection
       match /subscriptions/{subscriptionId} {
-        allow read, write: if isOwner(userId);
+        allow read, write: if isOwner(userId) || isSystemScanner();
       }
     }
 
     // Tracker Rules (Root Collection)
     match /trackers/{trackerId} {
-      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || resource.data.isPublic == true);
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow read: if isSystemScanner() || (isAuthenticated() && (resource.data.userId == request.auth.uid || resource.data.isPublic == true));
+      allow create: if isSystemScanner() || (isAuthenticated() && request.resource.data.userId == request.auth.uid);
+      allow update, delete: if isSystemScanner() || (isAuthenticated() && resource.data.userId == request.auth.uid);
 
       // Subcollections nested inside trackers (verify parent tracker owner or isPublic)
       match /snapshots/{snapshotId} {
-        allow read: if isAuthenticated() && (
+        allow read: if isSystemScanner() || (isAuthenticated() && (
           get(/databases/$(database)/documents/trackers/$(trackerId)).data.userId == request.auth.uid ||
           get(/databases/$(database)/documents/trackers/$(trackerId)).data.isPublic == true
-        );
-        allow write: if isAuthenticated() && get(/databases/$(database)/documents/trackers/$(trackerId)).data.userId == request.auth.uid;
+        ));
+        allow write: if isSystemScanner() || (isAuthenticated() && get(/databases/$(database)/documents/trackers/$(trackerId)).data.userId == request.auth.uid);
       }
 
       match /screenshots/{screenshotId} {
-        allow read: if isAuthenticated() && (
+        allow read: if isSystemScanner() || (isAuthenticated() && (
           get(/databases/$(database)/documents/trackers/$(trackerId)).data.userId == request.auth.uid ||
           get(/databases/$(database)/documents/trackers/$(trackerId)).data.isPublic == true
-        );
-        allow write: if isAuthenticated() && get(/databases/$(database)/documents/trackers/$(trackerId)).data.userId == request.auth.uid;
+        ));
+        allow write: if isSystemScanner() || (isAuthenticated() && get(/databases/$(database)/documents/trackers/$(trackerId)).data.userId == request.auth.uid);
       }
 
       match /scans/{scanId} {
-        allow read: if isAuthenticated() && (
+        allow read: if isSystemScanner() || (isAuthenticated() && (
           get(/databases/$(database)/documents/trackers/$(trackerId)).data.userId == request.auth.uid ||
           get(/databases/$(database)/documents/trackers/$(trackerId)).data.isPublic == true
-        );
-        allow write: if isAuthenticated() && get(/databases/$(database)/documents/trackers/$(trackerId)).data.userId == request.auth.uid;
+        ));
+        allow write: if isSystemScanner() || (isAuthenticated() && get(/databases/$(database)/documents/trackers/$(trackerId)).data.userId == request.auth.uid);
       }
 
       match /events/{eventId} {
-        allow read: if isAuthenticated() && (
+        allow read: if isSystemScanner() || (isAuthenticated() && (
           get(/databases/$(database)/documents/trackers/$(trackerId)).data.userId == request.auth.uid ||
           get(/databases/$(database)/documents/trackers/$(trackerId)).data.isPublic == true
-        );
-        allow write: if isAuthenticated() && get(/databases/$(database)/documents/trackers/$(trackerId)).data.userId == request.auth.uid;
+        ));
+        allow write: if isSystemScanner() || (isAuthenticated() && get(/databases/$(database)/documents/trackers/$(trackerId)).data.userId == request.auth.uid);
       }
 
       match /metrics/{metricId} {
-        allow read: if isAuthenticated() && (
+        allow read: if isSystemScanner() || (isAuthenticated() && (
           get(/databases/$(database)/documents/trackers/$(trackerId)).data.userId == request.auth.uid ||
           get(/databases/$(database)/documents/trackers/$(trackerId)).data.isPublic == true
-        );
-        allow write: if isAuthenticated() && get(/databases/$(database)/documents/trackers/$(trackerId)).data.userId == request.auth.uid;
+        ));
+        allow write: if isSystemScanner() || (isAuthenticated() && get(/databases/$(database)/documents/trackers/$(trackerId)).data.userId == request.auth.uid);
       }
     }
 
@@ -99,7 +104,7 @@ service cloud.firestore {
 
     // User Analytics rules
     match /analytics/{userId} {
-      allow read, write: if isOwner(userId);
+      allow read, write: if isOwner(userId) || isSystemScanner();
     }
 
     // User Billing rules (Read-only for users, writes via Service Account)

@@ -1,4 +1,5 @@
-﻿export const runtime = 'nodejs';
+﻿export const dynamic = 'force-static';
+export const runtime = 'nodejs';
 import { NextRequest, NextResponse } from "next/server";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/services/firebase";
@@ -69,4 +70,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: error.message || "Internal Server Error" }, { status: 500 });
   }
 }
+
+
 

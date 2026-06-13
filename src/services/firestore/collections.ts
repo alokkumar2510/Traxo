@@ -20,7 +20,13 @@ import { logger } from "@/utils/logger";
 export const collectionConverter: FirestoreDataConverter<Collection> = {
   toFirestore(col: Collection): DocumentData {
     const { id, ...data } = col;
-    return data;
+    const cleanData = { ...data } as DocumentData;
+    Object.keys(cleanData).forEach((key) => {
+      if (cleanData[key] === undefined) {
+        delete cleanData[key];
+      }
+    });
+    return cleanData;
   },
   fromFirestore(snapshot: QueryDocumentSnapshot): Collection {
     const data = snapshot.data();
@@ -103,7 +109,15 @@ export class CollectionRepository {
       const docRef = doc(db, "users", userId, "collections", collectionId).withConverter(
         collectionConverter
       );
-      await updateDoc(docRef, { ...data, updatedAt: new Date() });
+      // Strip undefined values to prevent Firestore from throwing errors
+      const cleanData = Object.entries(data).reduce((acc, [key, value]) => {
+        if (value !== undefined) {
+          acc[key] = value;
+        }
+        return acc;
+      }, {} as Record<string, any>);
+
+      await updateDoc(docRef, { ...cleanData, updatedAt: new Date() });
       logger.info({
         service: "firestore",
         event: "collection_updated",

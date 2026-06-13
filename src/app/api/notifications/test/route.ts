@@ -1,4 +1,5 @@
-﻿export const runtime = 'nodejs';
+﻿export const dynamic = 'force-static';
+export const runtime = 'nodejs';
 import { NextRequest, NextResponse } from "next/server";
 import { sendEmail } from "@/services/notifications/resend";
 import { sendTelegramTest } from "@/services/notifications/telegram";
@@ -73,4 +74,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: error.message || "Internal Server Error" }, { status: 500 });
   }
 }
+
+
 

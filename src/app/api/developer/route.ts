@@ -1,4 +1,5 @@
-﻿export const runtime = 'nodejs';
+﻿export const dynamic = 'force-static';
+export const runtime = 'nodejs';
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/services/firebase";
 import {
@@ -183,4 +184,6 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ success: false, error: "Internal Server Error" }, { status: 500 });
   }
 }
+
+
 

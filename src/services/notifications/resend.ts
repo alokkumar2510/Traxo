@@ -203,6 +203,29 @@ export function compileAlertEmail(tracker: Tracker, event: TrackerEvent): string
             <div class="event-card">
               <h3>${event.title}</h3>
               <p>${event.summary}</p>
+              
+              <!-- URL to the change -->
+              <div style="margin-top: 16px; font-size: 13px; border-top: 1px solid #374151; padding-top: 12px;">
+                <span style="color: #9ca3af; font-weight: 500;">Link to monitored site:</span>
+                <a href="${tracker.url}" target="_blank" style="color: #38bdf8; text-decoration: underline; margin-left: 4px; font-weight: 600;">
+                  ${tracker.url}
+                </a>
+              </div>
+
+              <!-- Image of the change -->
+              ${(event.metadata as any)?.visualDiff?.diffImageUrl ? `
+                <div style="margin-top: 20px; border-top: 1px solid #374151; padding-top: 16px;">
+                  <h4 style="margin: 0 0 12px 0; color: #ffffff; font-size: 14px; font-weight: 600;">Visual Screenshot of Change:</h4>
+                  <div style="border-radius: 8px; overflow: hidden; border: 1px solid #374151; background-color: #0b0f19;">
+                    <a href="${tracker.url}" target="_blank">
+                      <img src="${(event.metadata as any).visualDiff.diffImageUrl}" alt="Screenshot of Change" style="width: 100%; max-width: 100%; height: auto; display: block;" />
+                    </a>
+                  </div>
+                  <div style="margin-top: 8px; font-size: 11px; color: #6b7280; text-align: center;">
+                    Click image to visit the monitored URL
+                  </div>
+                </div>
+              ` : ""}
             </div>
 
             <div class="btn-container">

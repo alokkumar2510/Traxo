@@ -72,53 +72,6 @@ export default function MarketplacePage() {
   const [publishing, setPublishing] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
 
-  // Fallback seed data if Firestore is empty
-  const mockPublicTrackers: PublicTracker[] = [
-    {
-      id: "pub-1",
-      creatorId: "admin",
-      name: "Google Careers Watcher",
-      description: "Monitors Software Engineer Internship roles in India and APAC locations.",
-      category: "jobs",
-      subscriberCount: 342,
-      sourceUrl: "https://careers.google.com/jobs/results/",
-      active: true,
-      createdAt: Timestamp.now(),
-    },
-    {
-      id: "pub-2",
-      creatorId: "admin",
-      name: "MacBook Pro M4 Price Drop",
-      description: "Tracks Amazon India listings for MacBook Air and Pro lowest prices.",
-      category: "prices",
-      subscriberCount: 891,
-      sourceUrl: "https://www.amazon.in/dp/B0DGDZ7GZD",
-      active: true,
-      createdAt: Timestamp.now(),
-    },
-    {
-      id: "pub-3",
-      creatorId: "admin",
-      name: "VSSUT Examination Portal",
-      description: "Tracks university notice boards for exam timetables and syllabus shifts.",
-      category: "education",
-      subscriberCount: 142,
-      sourceUrl: "https://www.vssut.ac.in/",
-      active: true,
-      createdAt: Timestamp.now(),
-    },
-    {
-      id: "pub-4",
-      creatorId: "admin",
-      name: "India Govt Job Portal",
-      description: "Monitors national government job updates and UPSC vacancy announcements.",
-      category: "government",
-      subscriberCount: 521,
-      sourceUrl: "https://www.ncs.gov.in/",
-      active: true,
-      createdAt: Timestamp.now(),
-    },
-  ];
 
   // Load Marketplace
   useEffect(() => {
@@ -137,13 +90,6 @@ export default function MarketplacePage() {
             id: doc.id,
             ...doc.data(),
           })) as PublicTracker[];
-        } else {
-          // Seed mock data if database is empty for visual demonstration
-          fetchedTrackers = mockPublicTrackers;
-          // Create them in Firestore so they persist
-          for (const item of mockPublicTrackers) {
-            await setDoc(doc(db, "marketplace", "publicTrackers", item.id), item);
-          }
         }
         setPublicTrackers(fetchedTrackers);
 

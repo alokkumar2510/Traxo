@@ -1,5 +1,8 @@
 export type Bindings = {
   FIREBASE_PROJECT_ID: string;
+  FIREBASE_API_KEY: string;           // Firebase Web API Key (from project settings)
+  FIREBASE_SCANNER_EMAIL: string;     // System scanner user email
+  FIREBASE_SCANNER_PASSWORD: string;  // System scanner user password
   NEXT_JS_API_URL: string;
   INTERNAL_API_SECRET: string;
   SCANS_QUEUE?: {
@@ -18,7 +21,7 @@ export type UserPlan = "free" | "pro" | "business";
 export type AuthProvider = "google" | "email";
 export type TrackerType = "website" | "section" | "job" | "price" | "pdf";
 export type TrackerStatus = "active" | "paused" | "error";
-export type ScanFrequency = "30m" | "hourly" | "3h" | "6h" | "12h" | "daily";
+export type ScanFrequency = "hourly" | "6h" | "12h" | "daily";
 export type NotificationChannel = "email" | "telegram";
 export type NotificationStatus = "pending" | "sent" | "failed";
 export type SelectorType = "css" | "xpath";

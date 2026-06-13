@@ -2,7 +2,7 @@ import { createHash } from "crypto";
 import { Timestamp } from "firebase/firestore";
 import { Tracker, Snapshot, ScanRecord, TrackerEvent, NotificationLog } from "@/types/database";
 import { fetchWithPlaywright } from "../scraping/browser";
-import { normalizeText, extractSection, extractPrice, extractJobs } from "../scraping/parser";
+import { normalizeText, extractVisibleBodyText, extractSection, extractPrice, extractJobs } from "../scraping/parser";
 import { TrackerRepository } from "../firestore/trackers";
 import { UserRepository } from "../firestore/users";
 import { NotificationRepository } from "../firestore/notifications";
@@ -48,6 +48,35 @@ export interface ScanExecutionResult {
   changesDetected: boolean;
   error?: string;
   responseTime: number;
+}
+
+/**
+ * Classifies event severity based on event type and price change magnitude
+ */
+function classifySeverity(
+  eventType: string,
+  oldPrice?: number,
+  newPrice?: number
+): "low" | "medium" | "high" {
+  switch (eventType) {
+    case "price_drop":
+      if (oldPrice && newPrice) {
+        const dropPct = ((oldPrice - newPrice) / oldPrice) * 100;
+        return dropPct >= 20 ? "high" : dropPct >= 5 ? "medium" : "low";
+      }
+      return "medium";
+    case "price_increase":
+      return "medium";
+    case "new_job":
+      return "low";
+    case "pdf_updated":
+      return "medium";
+    case "content_changed":
+    case "content_added":
+    case "content_removed":
+    default:
+      return "low";
+  }
 }
 
 export class MonitoringEngine {
@@ -166,8 +195,7 @@ export class MonitoringEngine {
           diffSummary = "Monitored section content updated.";
           eventTitle = `Section updated: ${tracker.name}`;
         } else if (tracker.type === "price" && tracker.priceConfig) {
-          const bodyText = normalizeText(html);
-          const priceValue = extractPrice(bodyText);
+          const priceValue = extractPrice(html);
 
           if (priceValue === null) {
             throw new Error("Could not extract a numeric price from the webpage.");
@@ -218,10 +246,10 @@ export class MonitoringEngine {
           eventMetadata.listingsCount = jobs.length;
           eventMetadata.listings = jobs.slice(0, 5); // Store top 5 job samples in metadata
         } else {
-          // General Website tracking
-          const bodyText = normalizeText(html);
+          // General Website tracking — use clean visible text (strips script nonces, CSS values etc)
+          const bodyText = extractVisibleBodyText(html);
           contentToHash = generateHash(bodyText);
-          rawContent = bodyText;
+          rawContent = bodyText.slice(0, 5000); // cap snapshot storage
           diffSummary = "Webpage text content modified.";
           eventTitle = `Content updated: ${tracker.name}`;
         }
@@ -344,13 +372,14 @@ export class MonitoringEngine {
 
         // 4. Generate Change Event
         const eventId = crypto.randomUUID();
+        const severity = classifySeverity(eventType, eventMetadata.oldPrice, eventMetadata.newPrice);
         const changeEvent: TrackerEvent = {
           id: eventId,
           trackerId,
           type: eventType as any,
           title: eventTitle,
           summary: diffSummary,
-          severity: "medium", // Default severity
+          severity,
           metadata: eventMetadata,
           createdAt: currentTimestamp,
         };

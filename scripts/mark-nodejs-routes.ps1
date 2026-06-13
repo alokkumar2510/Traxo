@@ -12,15 +12,19 @@ $apiRoutes = @(
 foreach ($route in $apiRoutes) {
     if (Test-Path $route) {
         $content = Get-Content $route -Raw
+        
+        # Ensure runtime is nodejs
         if ($content -notmatch "export const runtime") {
-            # Add nodejs runtime directive after first line
-            $lines = $content -split "`n"
-            $newContent = "export const runtime = 'nodejs';`n" + $content
-            Set-Content -Path $route -Value $newContent -Encoding UTF8
-            Write-Host "Added runtime=nodejs to: $route" -ForegroundColor Green
-        } else {
-            Write-Host "Already has runtime directive: $route" -ForegroundColor Yellow
+            $content = "export const runtime = 'nodejs';`n" + $content
         }
+        
+        # Ensure dynamic is force-static
+        if ($content -notmatch "export const dynamic") {
+            $content = "export const dynamic = 'force-static';`n" + $content
+        }
+        
+        Set-Content -Path $route -Value $content -Encoding UTF8
+        Write-Host "Updated route directives for: $route" -ForegroundColor Green
     } else {
         Write-Host "File not found: $route" -ForegroundColor Red
     }

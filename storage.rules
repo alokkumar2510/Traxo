@@ -7,6 +7,11 @@ service firebase.storage {
       return request.auth != null;
     }
 
+    // Helper function to verify if the request is from the system backend scanner
+    function isSystemScanner() {
+      return isAuthenticated() && request.auth.token.email == 'system-scanner@traxo.com';
+    }
+
     // Helper function to get tracker document from Firestore
     function getTracker(trackerId) {
       return firestore.get(/databases/(default)/documents/trackers/$(trackerId));
@@ -24,20 +29,20 @@ service firebase.storage {
 
     // Rules for Screenshots subcollection resources
     match /screenshots/{trackerId}/{allPaths=**} {
-      allow read: if isAuthenticated() && (isTrackerOwner(trackerId) || isTrackerPublic(trackerId));
-      allow write: if isTrackerOwner(trackerId);
+      allow read: if isSystemScanner() || (isAuthenticated() && (isTrackerOwner(trackerId) || isTrackerPublic(trackerId)));
+      allow write: if isSystemScanner() || isTrackerOwner(trackerId);
     }
 
     // Rules for Snapshots subcollection resources
     match /snapshots/{trackerId}/{allPaths=**} {
-      allow read: if isAuthenticated() && (isTrackerOwner(trackerId) || isTrackerPublic(trackerId));
-      allow write: if isTrackerOwner(trackerId);
+      allow read: if isSystemScanner() || (isAuthenticated() && (isTrackerOwner(trackerId) || isTrackerPublic(trackerId)));
+      allow write: if isSystemScanner() || isTrackerOwner(trackerId);
     }
 
     // Rules for Visual Diffs subcollection resources
     match /visual-diffs/{trackerId}/{allPaths=**} {
-      allow read: if isAuthenticated() && (isTrackerOwner(trackerId) || isTrackerPublic(trackerId));
-      allow write: if isTrackerOwner(trackerId);
+      allow read: if isSystemScanner() || (isAuthenticated() && (isTrackerOwner(trackerId) || isTrackerPublic(trackerId)));
+      allow write: if isSystemScanner() || isTrackerOwner(trackerId);
     }
 
     // Rules for User CSV/JSON Exports

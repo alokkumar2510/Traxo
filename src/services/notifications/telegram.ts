@@ -61,6 +61,63 @@ export async function sendTelegramMessage(chatId: string, text: string): Promise
 }
 
 /**
+ * Sends a photo message via the Telegram Bot API
+ */
+export async function sendTelegramPhoto(chatId: string, photo: string, caption: string): Promise<boolean> {
+  if (!botToken) {
+    logger.warn({
+      service: "notification",
+      event: "telegram_photo_skipped",
+      metadata: { reason: "TELEGRAM_BOT_TOKEN is not defined in environment variables" },
+    });
+    return false;
+  }
+
+  try {
+    const url = `https://api.telegram.org/bot${botToken}/sendPhoto`;
+    
+    logger.info({
+      service: "notification",
+      event: "telegram_sending_photo",
+      metadata: { chatId, photo },
+    });
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        chat_id: chatId,
+        photo,
+        caption,
+        parse_mode: "HTML",
+      }),
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`Telegram API returned status ${res.status}: ${errorText}`);
+    }
+
+    logger.info({
+      service: "notification",
+      event: "telegram_photo_sent_success",
+      metadata: { chatId },
+    });
+
+    return true;
+  } catch (error: any) {
+    logger.error({
+      service: "notification",
+      event: "telegram_photo_failed",
+      error: error.message || error,
+    });
+    return false;
+  }
+}
+
+/**
  * Sends a beautifully formatted tracker change alert to a user's Telegram chat
  */
 export async function sendTelegramAlert(
@@ -93,6 +150,12 @@ ${trackerEmoji} <b>Tracker:</b> ${tracker.name}
 
 👉 <a href="${dashboardLink}">View Details on Dashboard</a>
 `;
+
+  const diffImageUrl = (event.metadata as any)?.visualDiff?.diffImageUrl;
+  if (diffImageUrl) {
+    const photoSuccess = await sendTelegramPhoto(chatId, diffImageUrl, message.trim());
+    if (photoSuccess) return true;
+  }
 
   return sendTelegramMessage(chatId, message.trim());
 }

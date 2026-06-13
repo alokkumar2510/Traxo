@@ -5,8 +5,12 @@ compatibility_flags = [ "nodejs_compat" ]
 
 [vars]
 FIREBASE_PROJECT_ID = "traxo-prod-2025"
+FIREBASE_API_KEY = "AIzaSyCTb0KLOeacSApDphLM9rvDaMr5L69MEpc"
 NEXT_JS_API_URL = "https://traxo.alokkumarsahu.in"
 INTERNAL_API_SECRET = "traxo-internal-secret-2025"
+# NOTE: Scanner credentials must be set as secrets:
+#   wrangler secret put FIREBASE_SCANNER_EMAIL
+#   wrangler secret put FIREBASE_SCANNER_PASSWORD
 
 # Cloudflare Queue Producer Binding
 [[queues.producers]]
@@ -19,12 +23,12 @@ queue = "traxo-scans"
 max_batch_size = 10
 max_batch_timeout = 2
 
-# Cloudflare Cron Triggers (max 5 on free plan)
+# Cloudflare Cron Triggers
+# Only frequencies that exist in the database schema: hourly, 6h, 12h, daily
 [triggers]
 crons = [
-  "*/30 * * * *",     # Every 30 minutes
-  "0 * * * *",        # Hourly
-  "0 */3 * * *",      # Every 3 hours
-  "0 */6 * * *",      # Every 6 hours
-  "0 0 * * *"         # Daily
+  "0 * * * *",        # Hourly  → triggers for trackers with frequency="hourly"
+  "0 */6 * * *",      # Every 6 hours  → frequency="6h"
+  "0 */12 * * *",     # Every 12 hours → frequency="12h"  (was missing before!)
+  "0 0 * * *"         # Daily → frequency="daily"
 ]

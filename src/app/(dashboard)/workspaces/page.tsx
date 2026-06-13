@@ -72,30 +72,6 @@ export default function WorkspacesPage() {
   const [inviting, setInviting] = useState(false);
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
 
-  // Fallback demo workspaces
-  const mockWorkspaces: Workspace[] = [
-    {
-      id: "ws-personal",
-      name: "Personal Watchlist",
-      creatorId: userId ?? "admin",
-      members: {
-        [userId ?? "admin"]: "owner",
-      },
-      createdAt: Timestamp.now(),
-    },
-    {
-      id: "ws-engineering",
-      name: "Engineering Team Workspace",
-      creatorId: "sys-admin",
-      members: {
-        [userId ?? "admin"]: "admin",
-        "intern@traxo.io": "editor",
-        "cto@traxo.io": "owner",
-        "auditor@traxo.io": "viewer",
-      },
-      createdAt: Timestamp.now(),
-    },
-  ];
 
   // Load Workspaces from Firestore
   useEffect(() => {
@@ -110,12 +86,6 @@ export default function WorkspacesPage() {
         let list: Workspace[] = [];
         if (!snap.empty) {
           list = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as Workspace[];
-        } else {
-          // Initialize mock workspaces if Firestore is clean
-          list = mockWorkspaces;
-          for (const item of mockWorkspaces) {
-            await setDoc(doc(db, "workspaces", item.id), item);
-          }
         }
 
         // Filter workspaces where user is a member

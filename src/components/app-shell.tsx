@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePathname } from "next/navigation";
 import Sidebar from "@/components/sidebar";
@@ -44,10 +44,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* Desktop Sidebar (hidden on mobile) */}
-      <Sidebar />
+      <Suspense fallback={<div className="w-[220px] bg-[#0A0A0A] border-r border-border-glass h-full fixed" />}>
+        <Sidebar />
+      </Suspense>
 
       {/* Main Grid Wrapper */}
-      <div className="flex flex-col min-h-screen md:pl-[280px] relative z-10">
+      <div className="flex flex-col min-h-screen md:pl-[220px] relative z-10">
         {/* Sticky Header */}
         <Header />
 

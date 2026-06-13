@@ -26,7 +26,13 @@ import { logger } from "@/utils/logger";
 export const trackerConverter: FirestoreDataConverter<Tracker> = {
   toFirestore(tracker: Tracker): DocumentData {
     const { id, ...data } = tracker;
-    return data;
+    const cleanData = { ...data } as DocumentData;
+    Object.keys(cleanData).forEach((key) => {
+      if (cleanData[key] === undefined) {
+        delete cleanData[key];
+      }
+    });
+    return cleanData;
   },
   fromFirestore(snapshot: QueryDocumentSnapshot): Tracker {
     const data = snapshot.data();
@@ -193,7 +199,15 @@ export class TrackerRepository {
   static async updateTracker(trackerId: string, data: Partial<Omit<Tracker, "id" | "userId" | "createdAt">>): Promise<void> {
     try {
       const docRef = doc(db, "trackers", trackerId).withConverter(trackerConverter);
-      await updateDoc(docRef, { ...data, updatedAt: new Date() });
+      // Strip undefined values to prevent Firestore from throwing errors
+      const cleanData = Object.entries(data).reduce((acc, [key, value]) => {
+        if (value !== undefined) {
+          acc[key] = value;
+        }
+        return acc;
+      }, {} as Record<string, any>);
+
+      await updateDoc(docRef, { ...cleanData, updatedAt: new Date() });
       logger.info({
         service: "firestore",
         event: "tracker_updated",

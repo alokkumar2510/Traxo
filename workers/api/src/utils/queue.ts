@@ -1,7 +1,11 @@
 import { Bindings } from "../types";
+import { runScanInWorker } from "./scanner";
+import { getFirebaseIdToken } from "./auth";
 
 /**
- * Executes the website scan job by calling the Next.js backend API
+ * Executes the scan job entirely inside the Cloudflare Worker.
+ * Previously called the Next.js /api/scan endpoint, which doesn't work
+ * in a static export on Cloudflare Pages.
  */
 export async function processScanJob(
   trackerId: string,
@@ -11,52 +15,34 @@ export async function processScanJob(
 ): Promise<void> {
   console.log(`[Queue Consumer] Processing scan for tracker ${trackerId} (Attempt ${attempts})`);
 
-  const url = `${env.NEXT_JS_API_URL}/api/scan`;
-  
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.INTERNAL_API_SECRET}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ trackerId }),
-  });
+  const result = await runScanInWorker(trackerId, env);
 
-  if (!res.ok) {
-    const errorBody = await res.text();
-    throw new Error(
-      `Next.js API scan failed with status ${res.status}. Body: ${errorBody || "empty"}`
-    );
+  if (!result.success && result.error) {
+    throw new Error(`Scan failed: ${result.error}`);
   }
 
-  const result = (await res.json()) as any;
   console.log(
-    `[Queue Consumer] Scan success for tracker ${trackerId}. Changes detected: ${result.changesDetected}`
+    `[Queue Consumer] Scan complete for tracker ${trackerId}. Changes detected: ${result.changesDetected}`
   );
 }
 
 /**
- * Calculates Cloudflare Queues custom retry delay in seconds
- * Retry Strategy:
- * - Attempt 2: 1 min (60s)
- * - Attempt 3: 5 min (300s)
- * - Attempt 4: 15 min (900s)
+ * Calculates Cloudflare Queues custom retry delay in seconds.
+ * - Attempt 2: 1 min
+ * - Attempt 3: 5 min
+ * - Attempt 4: 15 min
  */
 export function calculateRetryDelay(attempts: number): number {
   switch (attempts) {
-    case 1:
-      return 60; // 1 minute
-    case 2:
-      return 300; // 5 minutes
-    case 3:
-      return 900; // 15 minutes
-    default:
-      return 900;
+    case 1: return 60;
+    case 2: return 300;
+    case 3: return 900;
+    default: return 900;
   }
 }
 
 /**
- * Logs a final failure when all queue retries are exhausted
+ * Logs a final failure when all queue retries are exhausted.
  */
 export async function handleFailedJob(
   trackerId: string,
@@ -66,17 +52,54 @@ export async function handleFailedJob(
 ): Promise<void> {
   const errorMsg = error?.message || String(error);
   console.error(
-    `[Queue Consumer] [DLQ / Max Retries Exhausted] Tracker: ${trackerId}, User: ${userId}. Error: ${errorMsg}`
+    `[Queue Consumer] [Max Retries Exhausted] Tracker: ${trackerId}, User: ${userId}. Error: ${errorMsg}`
   );
 
-  // Note: Since the Next.js server was unreachable or persistently failing,
-  // we log a final incident record. In production, this can also write
-  // directly to Firestore REST if service account credentials are provided,
-  // or push to a Dead Letter Queue (DLQ).
+  // Write final error state directly to Firestore REST API
   try {
-    // We log the incident to console. In Cloudflare, this goes to centralized logs (Sentry/Worker Logs)
-    console.error(`[INCIDENT] Background worker failed to contact Next.js backend to crawl tracker ${trackerId}.`);
-  } catch (err) {
-    console.error("Failed to log queue failure incident:", err);
+    const now = new Date().toISOString();
+    const scanId = crypto.randomUUID();
+    const body = {
+      fields: {
+        status: { stringValue: "failed" },
+        responseTime: { integerValue: "0" },
+        error: { stringValue: `Max retries exhausted. Last error: ${errorMsg}` },
+        changesDetected: { booleanValue: false },
+        scannedAt: { timestampValue: now },
+      },
+    };
+
+    const idToken = await getFirebaseIdToken(env);
+    await fetch(
+      `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/trackers/${trackerId}/scans?documentId=${scanId}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      }
+    );
+
+    // Update tracker status to error
+    await fetch(
+      `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/trackers/${trackerId}?updateMask.fieldPaths=status&updateMask.fieldPaths=updatedAt`,
+      {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          fields: {
+            status: { stringValue: "error" },
+            updatedAt: { timestampValue: now },
+          },
+        }),
+      }
+    );
+  } catch (writeErr) {
+    console.error("[Queue Consumer] Failed to write final error record to Firestore:", writeErr);
   }
 }

@@ -178,116 +178,21 @@ export default function TrackerDetailClient() {
     }
   };
 
-  // MOCK DATA Fallbacks for rich visual layout if database collections are empty
-  const getMockEvents = (): TrackerEvent[] => {
-    if (events.length > 0) return events;
-    
-    // Custom seed data based on type
-    const baseDate = new Date();
-    const type = tracker?.type || "website";
-    
-    if (type === "price") {
-      return [
-        {
-          id: "m-ev-1",
-          trackerId: trackerId,
-          type: "price_drop",
-          title: "Price drop alert",
-          summary: `Price reduced by ${tracker?.priceConfig?.currency === "USD" ? "$" : "₹"}3,500. Currently matches optimal target values.`,
-          severity: "high",
-          metadata: {},
-          createdAt: { toDate: () => new Date(baseDate.getTime() - 2 * 3600000) } as any,
-        },
-        {
-          id: "m-ev-2",
-          trackerId: trackerId,
-          type: "content_changed",
-          title: "Availability Status Updated",
-          summary: "Stock status changed from 'Only 2 left' to 'In Stock'.",
-          severity: "low",
-          metadata: {},
-          createdAt: { toDate: () => new Date(baseDate.getTime() - 24 * 3600000) } as any,
-        },
-      ];
-    }
-
-    if (type === "job") {
-      return [
-        {
-          id: "m-ev-1",
-          trackerId: trackerId,
-          type: "new_job",
-          title: "New Job Detected",
-          summary: `Detected matching job opening: ${tracker?.jobConfig?.role || "Software Engineer"} at ${tracker?.name}.`,
-          severity: "high",
-          metadata: {},
-          createdAt: { toDate: () => new Date(baseDate.getTime() - 4 * 3600000) } as any,
-        },
-      ];
-    }
-
-    if (type === "pdf") {
-      return [
-        {
-          id: "m-ev-1",
-          trackerId: trackerId,
-          type: "pdf_updated",
-          title: "PDF Catalog Replaced",
-          summary: "New version of the document was replaced with modified hash identifiers.",
-          severity: "medium",
-          metadata: {},
-          createdAt: { toDate: () => new Date(baseDate.getTime() - 12 * 3600000) } as any,
-        },
-      ];
-    }
-
-    return [
-      {
-        id: "m-ev-1",
-        trackerId: trackerId,
-        type: "content_changed",
-        title: "Section updates found",
-        summary: "Crawler detected changes in target layout structure. Clean text comparison successfully verified.",
-        severity: "medium",
-        metadata: {},
-        createdAt: { toDate: () => new Date(baseDate.getTime() - 3 * 3600000) } as any,
-      },
-      {
-        id: "m-ev-2",
-        trackerId: trackerId,
-        type: "content_added",
-        title: "Headline added",
-        summary: "New notice announcements headers added at selector nodes.",
-        severity: "low",
-        metadata: {},
-        createdAt: { toDate: () => new Date(baseDate.getTime() - 36 * 3600000) } as any,
-      },
-    ];
-  };
-
-  const getMockScans = (): ScanRecord[] => {
-    if (scans.length > 0) return scans;
-    const baseDate = new Date();
-    return [
-      { id: "m-sc-1", status: "success", responseTime: 245, statusCode: 200, changesDetected: true, scannedAt: { toDate: () => new Date(baseDate.getTime() - 10 * 60000) } as any },
-      { id: "m-sc-2", status: "success", responseTime: 312, statusCode: 200, changesDetected: false, scannedAt: { toDate: () => new Date(baseDate.getTime() - 70 * 60000) } as any },
-      { id: "m-sc-3", status: "success", responseTime: 285, statusCode: 200, changesDetected: false, scannedAt: { toDate: () => new Date(baseDate.getTime() - 130 * 60000) } as any },
-      { id: "m-sc-4", status: "success", responseTime: 420, statusCode: 200, changesDetected: false, scannedAt: { toDate: () => new Date(baseDate.getTime() - 190 * 60000) } as any },
-      { id: "m-sc-5", status: "success", responseTime: 215, statusCode: 200, changesDetected: true, scannedAt: { toDate: () => new Date(baseDate.getTime() - 250 * 60000) } as any },
-      { id: "m-sc-6", status: "failed", responseTime: 1205, statusCode: 504, error: "Gateway Timeout", changesDetected: false, scannedAt: { toDate: () => new Date(baseDate.getTime() - 310 * 60000) } as any },
-      { id: "m-sc-7", status: "success", responseTime: 298, statusCode: 200, changesDetected: false, scannedAt: { toDate: () => new Date(baseDate.getTime() - 370 * 60000) } as any },
-    ];
-  };
-
   const getChartData = () => {
-    const list = getMockScans();
-    return [...list]
+    return [...scans]
       .reverse()
-      .map((s, index) => ({
-        name: s.scannedAt?.toDate().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) || `Scan ${index + 1}`,
-        responseTime: s.responseTime,
-        status: s.status,
-      }));
+      .map((s, index) => {
+        let name = `Scan ${index + 1}`;
+        if (s.scannedAt) {
+          const date = (s.scannedAt as any).toDate ? (s.scannedAt as any).toDate() : new Date(s.scannedAt as any);
+          name = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        }
+        return {
+          name,
+          responseTime: s.responseTime || 0,
+          status: s.status,
+        };
+      });
   };
 
   const displayConfigDetails = () => {
@@ -480,10 +385,10 @@ export default function TrackerDetailClient() {
   }
 
   // Calculate Success Rate %
-  const totalScansList = getMockScans();
+  const totalScansList = scans;
   const successfulScans = totalScansList.filter((s) => s.status === "success").length;
   const successRate = totalScansList.length > 0 ? Math.round((successfulScans / totalScansList.length) * 100) : 100;
-  const avgResponse = totalScansList.length > 0 ? Math.round(totalScansList.reduce((acc, s) => acc + s.responseTime, 0) / totalScansList.length) : 0;
+  const avgResponse = totalScansList.length > 0 ? Math.round(totalScansList.reduce((acc, s) => acc + (s.responseTime || 0), 0) / totalScansList.length) : 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -662,14 +567,14 @@ export default function TrackerDetailClient() {
 
           {/* Area Chart Container */}
           <div className="h-[180px] w-full mt-2">
-            {mounted ? (
+            {mounted && scans.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={getChartData()} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
                   <defs>
-                    <linearGradient id="colorLatency" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#06B6D4" stopOpacity={0.25} />
-                      <stop offset="95%" stopColor="#06B6D4" stopOpacity={0.0} />
-                    </linearGradient>
+                     <linearGradient id="colorLatency" x1="0" y1="0" x2="0" y2="1">
+                       <stop offset="5%" stopColor="#06B6D4" stopOpacity={0.25} />
+                       <stop offset="95%" stopColor="#06B6D4" stopOpacity={0.0} />
+                     </linearGradient>
                   </defs>
                   <XAxis dataKey="name" stroke="#71717A" fontSize={10} tickLine={false} />
                   <YAxis stroke="#71717A" fontSize={10} tickLine={false} />
@@ -692,6 +597,10 @@ export default function TrackerDetailClient() {
                   />
                 </AreaChart>
               </ResponsiveContainer>
+            ) : mounted && scans.length === 0 ? (
+              <div className="h-full w-full flex items-center justify-center text-xs text-foreground-muted border border-dashed border-border-glass rounded-xl">
+                No latency history recorded yet
+              </div>
             ) : (
               <div className="h-full w-full bg-surface-elevated/40 animate-pulse rounded-xl" />
             )}
@@ -711,40 +620,79 @@ export default function TrackerDetailClient() {
           </div>
 
           <div className="relative border-l border-border-glass/50 pl-5 ml-2.5 space-y-6 py-2">
-            {getMockEvents().map((event, idx) => (
-              <div key={event.id} className="relative group">
-                {/* Timeline connector circle node */}
-                <div className="absolute -left-[27px] top-1.5 h-3.5 w-3.5 rounded-full border-2 border-background bg-accent-primary flex items-center justify-center shadow-[0_0_8px_rgba(59,130,246,0.8)] group-hover:scale-110 transition-transform">
-                  <div className="h-1 w-1 bg-white rounded-full" />
-                </div>
-
-                <div className="bg-bg-glass border border-border-glass rounded-2xl p-4 transition-all duration-300 hover:border-white/12 hover:bg-surface-elevated/10">
-                  <div className="flex items-center justify-between flex-wrap gap-2">
-                    <h4 className="text-sm font-bold text-foreground">{event.title}</h4>
-                    <span className="text-[10px] text-foreground-muted font-mono flex items-center gap-1">
-                      <Calendar className="h-3 w-3" />
-                      {event.createdAt ? event.createdAt.toDate().toLocaleString() : ""}
-                    </span>
-                  </div>
-                  <p className="text-xs text-foreground-secondary mt-1.5 leading-relaxed">
-                    {event.summary}
-                  </p>
-                  
-                  <div className="flex items-center gap-2 mt-3.5">
-                    <span className={`rounded-md border px-2 py-0.5 text-[8px] font-mono font-bold tracking-wider ${getEventBadgeStyles(event.type)}`}>
-                      {event.type.replace("_", " ")}
-                    </span>
-                    <span className={`rounded-md border px-2 py-0.5 text-[8px] font-mono font-bold uppercase tracking-wider ${
-                      event.severity === "high" ? "bg-error/10 border-error/20 text-error" :
-                      event.severity === "medium" ? "bg-[#F59E0B]/10 border-[#F59E0B]/20 text-[#F59E0B]" :
-                      "bg-foreground-muted/10 border-border-glass text-foreground-secondary"
-                    }`}>
-                      {event.severity} severity
-                    </span>
-                  </div>
-                </div>
+            {events.length === 0 ? (
+              <div className="text-left py-6 text-xs text-foreground-muted">
+                No changes detected yet
               </div>
-            ))}
+            ) : (
+              events.map((event, idx) => (
+                <div key={event.id} className="relative group">
+                  {/* Timeline connector circle node */}
+                  <div className="absolute -left-[27px] top-1.5 h-3.5 w-3.5 rounded-full border-2 border-background bg-accent-primary flex items-center justify-center shadow-[0_0_8px_rgba(59,130,246,0.8)] group-hover:scale-110 transition-transform">
+                    <div className="h-1 w-1 bg-white rounded-full" />
+                  </div>
+
+                  <div className="bg-bg-glass border border-border-glass rounded-2xl p-4 transition-all duration-300 hover:border-white/12 hover:bg-surface-elevated/10">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <h4 className="text-sm font-bold text-foreground">{event.title}</h4>
+                      <span className="text-[10px] text-foreground-muted font-mono flex items-center gap-1">
+                        <Calendar className="h-3 w-3" />
+                        {event.createdAt ? ((event.createdAt as any).toDate ? (event.createdAt as any).toDate().toLocaleString() : new Date(event.createdAt as any).toLocaleString()) : ""}
+                      </span>
+                    </div>
+                    <p className="text-xs text-foreground-secondary mt-1.5 leading-relaxed">
+                      {event.summary}
+                    </p>
+                    
+                    {/* Visual Screenshot & Link to Change */}
+                    {(event.metadata as any)?.visualDiff?.diffImageUrl ? (
+                      <div className="mt-3.5 space-y-2">
+                        <div className="rounded-xl overflow-hidden border border-border-glass bg-surface/50 max-w-xl">
+                          <a href={tracker.url} target="_blank" rel="noopener noreferrer" className="block relative group/image">
+                            <img
+                              src={(event.metadata as any).visualDiff.diffImageUrl}
+                              alt="Screenshot of Change"
+                              className="w-full h-auto object-cover max-h-[220px] transition-transform duration-300 group-hover/image:scale-[1.01]"
+                            />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/image:opacity-100 transition-opacity flex items-center justify-center gap-1.5">
+                              <ExternalLink className="h-4 w-4 text-white" />
+                              <span className="text-xs font-semibold text-white">Visit Monitored Site</span>
+                            </div>
+                          </a>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-foreground-secondary max-w-xl">
+                          <a href={tracker.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 hover:text-accent-primary transition-colors font-mono font-semibold truncate max-w-[70%]">
+                            <span>{tracker.url}</span>
+                            <ExternalLink className="h-3 w-3 shrink-0" />
+                          </a>
+                          <span className="shrink-0 text-foreground-muted font-medium">Mismatch: {String((event.metadata as any).visualDiff.mismatchPercentage)}%</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-3.5 flex items-center justify-between text-[11px] text-foreground-secondary">
+                        <a href={tracker.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 hover:text-accent-primary transition-colors font-mono font-semibold truncate max-w-[90%]">
+                          <span>{tracker.url}</span>
+                          <ExternalLink className="h-3 w-3 shrink-0" />
+                        </a>
+                      </div>
+                    )}
+                    
+                    <div className="flex items-center gap-2 mt-3.5">
+                      <span className={`rounded-md border px-2 py-0.5 text-[8px] font-mono font-bold tracking-wider ${getEventBadgeStyles(event.type)}`}>
+                        {event.type.replace("_", " ")}
+                      </span>
+                      <span className={`rounded-md border px-2 py-0.5 text-[8px] font-mono font-bold uppercase tracking-wider ${
+                        event.severity === "high" ? "bg-error/10 border-error/20 text-error" :
+                        event.severity === "medium" ? "bg-[#F59E0B]/10 border-[#F59E0B]/20 text-[#F59E0B]" :
+                        "bg-foreground-muted/10 border-border-glass text-foreground-secondary"
+                      }`}>
+                        {event.severity} severity
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
@@ -758,29 +706,35 @@ export default function TrackerDetailClient() {
           </div>
 
           <div className="flex flex-col gap-3">
-            {getMockScans().map((scan) => (
-              <div
-                key={scan.id}
-                className="bg-bg-glass border border-border-glass rounded-2xl p-4 flex items-center justify-between text-xs transition-all hover:bg-surface-elevated/10 hover:border-white/12"
-              >
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1.5 font-bold text-foreground">
-                    <span className={`h-2 w-2 rounded-full ${scan.status === "success" ? "bg-success" : "bg-error"}`} />
-                    <span>{scan.status === "success" ? `HTTP ${scan.statusCode || 200}` : scan.error || "Failed Scan"}</span>
-                  </div>
-                  <p className="text-[10px] text-foreground-secondary font-mono">
-                    {scan.scannedAt?.toDate().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                  </p>
-                </div>
-
-                <div className="text-right space-y-1">
-                  <span className="font-mono font-semibold text-foreground-secondary">{scan.responseTime} ms</span>
-                  <p className="text-[9px] uppercase font-mono tracking-wider text-foreground-muted">
-                    {scan.changesDetected ? "Changes Found" : "No Changes"}
-                  </p>
-                </div>
+            {scans.length === 0 ? (
+              <div className="text-center py-8 text-xs text-foreground-muted border border-dashed border-border-glass rounded-2xl">
+                No scan history recorded yet
               </div>
-            ))}
+            ) : (
+              scans.map((scan) => (
+                <div
+                  key={scan.id}
+                  className="bg-bg-glass border border-border-glass rounded-2xl p-4 flex items-center justify-between text-xs transition-all hover:bg-surface-elevated/10 hover:border-white/12"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1.5 font-bold text-foreground">
+                      <span className={`h-2 w-2 rounded-full ${scan.status === "success" ? "bg-success" : "bg-error"}`} />
+                      <span>{scan.status === "success" ? `HTTP ${scan.statusCode || 200}` : scan.error || "Failed Scan"}</span>
+                    </div>
+                    <p className="text-[10px] text-foreground-secondary font-mono">
+                      {scan.scannedAt ? ((scan.scannedAt as any).toDate ? (scan.scannedAt as any).toDate().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : new Date(scan.scannedAt as any).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })) : ""}
+                    </p>
+                  </div>
+
+                  <div className="text-right space-y-1">
+                    <span className="font-mono font-semibold text-foreground-secondary">{scan.responseTime} ms</span>
+                    <p className="text-[9px] uppercase font-mono tracking-wider text-foreground-muted">
+                      {scan.changesDetected ? "Changes Found" : "No Changes"}
+                    </p>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>

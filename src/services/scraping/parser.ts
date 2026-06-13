@@ -11,37 +11,75 @@ export function normalizeText(text: string): string {
 }
 
 /**
+ * Extracts only visible text from HTML, stripping <script>, <style>, <head>,
+ * and other non-content tags. Prevents script nonces, CSS values, and other
+ * volatile page internals from polluting the content hash.
+ */
+export function extractVisibleBodyText(html: string): string {
+  const $ = cheerio.load(html);
+
+  // Remove non-visible content
+  $("script, style, head, noscript, iframe, svg, [aria-hidden='true']").remove();
+
+  // Get the body text
+  const bodyText = $("body").text();
+  return normalizeText(bodyText);
+}
+
+/**
  * Extracts a CSS section from HTML and returns its raw text
  */
 export function extractSection(html: string, selector: string): string {
   const $ = cheerio.load(html);
   const element = $(selector);
-  
+
   if (element.length === 0) {
     throw new Error(`Selector "${selector}" was not found in the HTML document.`);
   }
 
-  return element.text();
+  return normalizeText(element.text());
 }
 
 /**
- * Extracts numeric price value using regex matching
+ * Extracts numeric price value from visible page text.
+ * Uses currency-anchored patterns first, falls back to context-aware extraction.
+ * Returns null if no reliable price can be found (never returns garbage).
  */
-export function extractPrice(text: string): number | null {
-  // Try pattern matching for currencies: e.g. ₹ 84,999.00 or $1,250
-  const regex = /(?:₹|\$|inr|rs\.?|usd)\s*([0-9,]+(?:\.[0-9]+)?)/i;
-  const match = text.match(regex);
-  if (match) {
-    const cleanNum = match[1].replace(/,/g, "");
-    return parseFloat(cleanNum);
+export function extractPrice(html: string): number | null {
+  // Load HTML and extract only visible text (exclude scripts, styles, etc.)
+  const $ = cheerio.load(html);
+  $("script, style, head, noscript").remove();
+  const visibleText = normalizeText($("body").text());
+
+  // Patterns ordered by specificity: currency-anchored first
+  const currencyPatterns = [
+    /(?:₹|Rs\.?|INR)\s*([0-9,]+(?:\.[0-9]+)?)/i,
+    /(?:\$|USD)\s*([0-9,]+(?:\.[0-9]+)?)/i,
+    /(?:£|GBP)\s*([0-9,]+(?:\.[0-9]+)?)/i,
+    /(?:€|EUR)\s*([0-9,]+(?:\.[0-9]+)?)/i,
+    // Number followed by currency symbol
+    /([0-9,]+(?:\.[0-9]+)?)\s*(?:₹|Rs\.?|INR|\$|USD|£|€)/i,
+  ];
+
+  for (const pattern of currencyPatterns) {
+    const match = visibleText.match(pattern);
+    if (match) {
+      const num = parseFloat(match[1].replace(/,/g, ""));
+      // Sanity check: prices should be between 0.01 and 100,000,000
+      if (!isNaN(num) && num > 0.01 && num < 100_000_000) {
+        return num;
+      }
+    }
   }
 
-  // Fallback: extract first numeric block
-  const fallbackRegex = /([0-9,]+(?:\.[0-9]+)?)/;
-  const fallbackMatch = text.match(fallbackRegex);
-  if (fallbackMatch) {
-    const cleanNum = fallbackMatch[1].replace(/,/g, "");
-    return parseFloat(cleanNum);
+  // Context-aware fallback: look near price-indicating words
+  const priceContextRegex = /(?:price|cost|amount|total|pay|mrp|offer|buy)[:\s₹$£€]*([0-9,]+(?:\.[0-9]{1,2})?)/i;
+  const contextMatch = visibleText.match(priceContextRegex);
+  if (contextMatch) {
+    const num = parseFloat(contextMatch[1].replace(/,/g, ""));
+    if (!isNaN(num) && num > 0.01 && num < 100_000_000) {
+      return num;
+    }
   }
 
   return null;
@@ -67,40 +105,32 @@ export function extractJobs(
 
   const kwLower = keywords.map((k) => k.toLowerCase());
 
-  // Search anchors (links) which represent job postings typically
   $("a").each((_, el) => {
     const text = normalizeText($(el).text());
     const href = $(el).attr("href");
 
     if (text.length > 5 && text.length < 120) {
-      const matchesKeyword = kwLower.some((k) => text.toLowerCase().includes(k));
+      const matchesKeyword = kwLower.length === 0 || kwLower.some((k) => text.toLowerCase().includes(k));
       if (matchesKeyword && !seenTitles.has(text.toLowerCase())) {
         seenTitles.add(text.toLowerCase());
-        
-        // Inspect parent container text to find location
+
         const containerText = $(el).parent().text().toLowerCase();
         let location = "";
-        
+
         if (containerText.includes("remote") || containerText.includes("work from home")) {
           location = "Remote";
-        } else if (options.location) {
-          // Check if parent text contains the targeted location name
-          const locMatch = containerText.includes(options.location.toLowerCase());
-          if (locMatch) {
-            location = options.location;
-          }
+        } else if (options.location && containerText.includes(options.location.toLowerCase())) {
+          location = options.location;
         }
 
-        // Apply filters
-        if (options.remoteOnly && location !== "Remote") {
+        if (options.remoteOnly && location !== "Remote") return;
+
+        if (
+          options.location &&
+          location === "" &&
+          !text.toLowerCase().includes(options.location.toLowerCase())
+        ) {
           return;
-        }
-
-        if (options.location && location === "") {
-          // Check if the link itself contains location text
-          if (!text.toLowerCase().includes(options.location.toLowerCase())) {
-            return;
-          }
         }
 
         listings.push({

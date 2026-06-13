@@ -120,7 +120,15 @@ export class UserRepository {
   static async updateUserProfile(userId: string, data: Partial<Omit<UserProfile, "id" | "createdAt">>): Promise<void> {
     try {
       const userDocRef = doc(db, "users", userId).withConverter(userProfileConverter);
-      await updateDoc(userDocRef, { ...data, updatedAt: new Date() });
+      // Strip undefined values to prevent Firestore from throwing errors
+      const cleanData = Object.entries(data).reduce((acc, [key, value]) => {
+        if (value !== undefined) {
+          acc[key] = value;
+        }
+        return acc;
+      }, {} as Record<string, any>);
+
+      await updateDoc(userDocRef, { ...cleanData, updatedAt: new Date() });
       logger.info({
         service: "firestore",
         event: "user_profile_updated",

@@ -1,29 +1,24 @@
 import { Bindings } from "../types";
+import { getFirebaseIdToken } from "./auth";
 
 /**
- * Maps a Cloudflare Scheduled Event cron expression to our database frequency field value
+ * Maps a Cloudflare Scheduled Event cron expression to our database frequency field value.
+ * Only maps crons that correspond to valid database ScanFrequency values.
  */
 export function mapCronToFrequency(cron: string): string | null {
   switch (cron) {
-    case "*/30 * * * *":
-      return "30m";
-    case "0 * * * *":
-      return "hourly";
-    case "0 */3 * * *":
-      return "3h";
-    case "0 */6 * * *":
-      return "6h";
-    case "0 */12 * * *":
-      return "12h";
-    case "0 0 * * *":
-      return "daily";
-    default:
-      return null;
+    case "0 * * * *":    return "hourly";
+    case "0 */6 * * *":  return "6h";
+    case "0 */12 * * *": return "12h";
+    case "0 0 * * *":    return "daily";
+    default:             return null; // Unknown or unsupported cron
   }
 }
 
 /**
- * Handles incoming Cloudflare Cron Trigger events
+ * Handles incoming Cloudflare Cron Trigger events.
+ * Queries Firestore directly (no Next.js API call) for active trackers
+ * matching the target frequency, then dispatches scan jobs to the queue.
  */
 export async function handleCronTrigger(
   cronExpression: string,
@@ -31,59 +26,101 @@ export async function handleCronTrigger(
 ): Promise<void> {
   const frequency = mapCronToFrequency(cronExpression);
   if (!frequency) {
-    console.warn(`[Scheduler] Skipping. Unsupported cron trigger: ${cronExpression}`);
+    console.warn(`[Scheduler] Unsupported cron expression, skipping: "${cronExpression}"`);
     return;
   }
 
-  console.log(`[Scheduler] Running cron execution for frequency: ${frequency} (Cron: ${cronExpression})`);
+  console.log(`[Scheduler] Cron triggered for frequency: ${frequency} (${cronExpression})`);
 
-  // 1. Query active trackers matching target frequency from Next.js API
-  const scheduleUrl = `${env.NEXT_JS_API_URL}/api/scan/schedule`;
-  
+  // Query active trackers with this frequency directly from Firestore REST API
   try {
-    const res = await fetch(scheduleUrl, {
+    const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents:runQuery`;
+
+    const queryBody = {
+      structuredQuery: {
+        from: [{ collectionId: "trackers" }],
+        where: {
+          compositeFilter: {
+            op: "AND",
+            filters: [
+              {
+                fieldFilter: {
+                  field: { fieldPath: "status" },
+                  op: "EQUAL",
+                  value: { stringValue: "active" },
+                },
+              },
+              {
+                fieldFilter: {
+                  field: { fieldPath: "frequency" },
+                  op: "EQUAL",
+                  value: { stringValue: frequency },
+                },
+              },
+            ],
+          },
+        },
+        select: {
+          fields: [
+            { fieldPath: "userId" },
+          ],
+        },
+      },
+    };
+
+    const idToken = await getFirebaseIdToken(env);
+    const res = await fetch(firestoreUrl, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${env.INTERNAL_API_SECRET}`,
+        Authorization: `Bearer ${idToken}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ frequency }),
+      body: JSON.stringify(queryBody),
     });
 
     if (!res.ok) {
       const errBody = await res.text();
-      throw new Error(`Failed to query schedule from Next.js API: ${res.status}. Body: ${errBody}`);
+      throw new Error(`Firestore query failed (${res.status}): ${errBody}`);
     }
 
-    const { trackers } = (await res.json()) as { trackers: Array<{ id: string; userId: string }> };
+    const results = (await res.json()) as any[];
+    const trackers: Array<{ id: string; userId: string }> = [];
 
-    if (!trackers || trackers.length === 0) {
+    for (const item of results) {
+      if (item.document) {
+        const docName: string = item.document.name;
+        const id = docName.split("/").pop() || "";
+        const userId = item.document.fields?.userId?.stringValue || "";
+        if (id && userId) {
+          trackers.push({ id, userId });
+        }
+      }
+    }
+
+    if (trackers.length === 0) {
       console.log(`[Scheduler] No active trackers found for frequency: ${frequency}`);
       return;
     }
 
     console.log(`[Scheduler] Found ${trackers.length} active trackers for frequency: ${frequency}`);
 
-    // 2. Dispatch each tracker scan job to Cloudflare Queue using batching
+    // Dispatch scan jobs to Cloudflare Queue in batches of 100
     if (env.SCANS_QUEUE) {
-      let dispatched = 0;
       const chunkSize = 100;
+      let dispatched = 0;
       for (let i = 0; i < trackers.length; i += chunkSize) {
-        const chunk = trackers.slice(i, i + chunkSize).map((tracker) => ({
-          body: {
-            trackerId: tracker.id,
-            userId: tracker.userId,
-          },
+        const chunk = trackers.slice(i, i + chunkSize).map((t) => ({
+          body: { trackerId: t.id, userId: t.userId },
         }));
         await env.SCANS_QUEUE.sendBatch(chunk);
         dispatched += chunk.length;
       }
-      console.log(`[Scheduler] Successfully dispatched ${dispatched} scan jobs to queue.`);
+      console.log(`[Scheduler] Dispatched ${dispatched} scan jobs to queue for frequency: ${frequency}`);
     } else {
-      console.warn("[Scheduler] SCANS_QUEUE is not bound. Skipping queue dispatch.");
+      console.warn("[Scheduler] SCANS_QUEUE is not bound. Cannot dispatch jobs.");
     }
   } catch (error: any) {
-    console.error(`[Scheduler] Error running cron scheduler for ${frequency}:`, error.message || error);
+    console.error(`[Scheduler] Error for frequency ${frequency}:`, error.message || error);
     throw error;
   }
 }
